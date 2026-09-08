@@ -1,44 +1,61 @@
 # fckmouse configuration file
-# Place this file at ~/.config/fckmouse/config.toml
+# Place this at ~/.config/fckmouse/config.toml
 
 [chord]
-# Instant on-the-fly cursor movement using key chords.
-# No mode-switching required!
+# Instant on-the-fly cursor movement and clicking using key chords.
+# No mode-switching needed!
 enabled = true
 
-# Modifiers required to initiate chord cursor movement.
-# Default: Alt + Shift (Zero conflict with window managers, browsers & text editing).
-require_alt = true
-require_shift = true
-require_super = false
+# Modifiers required to initiate chord cursor actions.
+# You can use any combination, e.g.: ["alt", "shift"], ["super", "alt"], ["ctrl", "alt"], etc.
+modifiers = ["alt", "shift"]
 
 # Direction keys recognized when holding the modifiers:
-use_arrow_keys = true
-use_wasd_keys = true
+move_left = ["left", "a"]
+move_right = ["right", "d"]
+move_up = ["up", "w"]
+move_down = ["down", "s"]
 
-# Hold Ctrl simultaneously for Turbo Speed (3x multiplier):
-ctrl_turbo = true
+# Clicks and scrolls recognized when holding the chord modifiers:
+left_click = "space"
+right_click = "c"
+middle_click = "v"
+scroll_up = "r"
+scroll_down = "f"
+
+# Speed multiplier key when holding chord:
+turbo = "ctrl"
 
 
 [modal]
-# Vim-style Mouse Mode toggle (Default: Alt + Shift + M).
-# In Mouse Mode, single keys control the mouse without holding modifiers:
-# - Arrows / WASD / HJKL : Move cursor
-# - Space                : Left Click
-# - C                    : Right Click
-# - V                    : Middle Click
-# - R / F                : Scroll Up / Down
-# - Shift                : Precision crawl (0.3x)
-# - Ctrl                 : Turbo speed (3.0x)
-# - Esc                  : Exit Mouse Mode back to regular typing
-#
-# NOTE: In Mouse Mode, fckmouse exclusively grabs the keyboard via evdev,
-# preventing any keys from accidentally typing into your active windows!
+# Vim-style Mouse Mode.
+# In Mouse Mode, single keys control the mouse without holding modifiers.
+# Keyboard is exclusively locked (EVIOCGRAB) so no letters leak or type into open apps!
 enabled = true
-use_arrow_keys = true
-use_wasd_keys = true
-use_hjkl_keys = true
-scroll_speed = 1
+
+# Key to toggle Mouse Mode (when chord modifiers are held):
+toggle = "m"
+
+# Key to exit Mouse Mode back to normal typing:
+exit = "esc"
+
+# Direction keys in Mouse Mode (arrows, WASD, and HJKL):
+move_left = ["left", "a", "h"]
+move_right = ["right", "d", "l"]
+move_up = ["up", "w", "k"]
+move_down = ["down", "s", "j"]
+
+# Actions in Mouse Mode:
+left_click = "space"
+right_click = "c"
+middle_click = "v"
+scroll_up = "r"
+scroll_down = "f"
+
+# Modifiers inside Mouse Mode:
+precision = "shift"    # Hold for 0.3x slow precision crawl
+turbo = "ctrl"         # Hold for 3.0x turbo speed
+scroll_speed = 1       # Scroll wheel notches per tick
 
 
 [physics]
@@ -46,6 +63,6 @@ scroll_speed = 1
 base_speed = 2.5            # Starting speed (pixels per 10ms tick)
 max_speed = 28.0            # Maximum terminal speed under sustained hold
 acceleration = 35.0         # Rate of acceleration per second
-turbo_multiplier = 3.0      # Multiplier when Ctrl is held
-precision_multiplier = 0.3  # Multiplier when Shift is held in modal mode
+turbo_multiplier = 3.0      # Multiplier when Turbo key is held
+precision_multiplier = 0.3  # Multiplier when Precision key is held
 tick_rate_ms = 10           # Physics update frequency (10ms = 100 Hz)

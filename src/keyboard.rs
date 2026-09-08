@@ -111,48 +111,21 @@ impl KeyboardController {
         })
     }
 
-    /// Whether the Alt modifier is currently depressed.
-    pub fn is_alt_pressed(&self) -> bool {
-        self.pressed_keys.contains(&KeyCode::KEY_LEFTALT.code())
-            || self.pressed_keys.contains(&KeyCode::KEY_RIGHTALT.code())
-    }
 
-    /// Whether the Shift modifier is currently depressed.
-    pub fn is_shift_pressed(&self) -> bool {
-        self.pressed_keys.contains(&KeyCode::KEY_LEFTSHIFT.code())
-            || self.pressed_keys.contains(&KeyCode::KEY_RIGHTSHIFT.code())
-    }
-
-    /// Whether the Ctrl modifier is currently depressed.
-    pub fn is_ctrl_pressed(&self) -> bool {
-        self.pressed_keys.contains(&KeyCode::KEY_LEFTCTRL.code())
-            || self.pressed_keys.contains(&KeyCode::KEY_RIGHTCTRL.code())
-    }
-
-    /// Whether the Super/Meta (Windows) key is currently depressed.
-    pub fn is_super_pressed(&self) -> bool {
-        self.pressed_keys.contains(&KeyCode::KEY_LEFTMETA.code())
-            || self.pressed_keys.contains(&KeyCode::KEY_RIGHTMETA.code())
-    }
 
     /// Returns true if the configured chord modifiers are currently satisfied.
     pub fn chord_modifiers_active(&self) -> bool {
-        let c = &self.config.chord;
-        if !c.enabled {
+        if !self.config.chord.enabled {
             return false;
         }
 
-        if c.require_alt && !self.is_alt_pressed() {
-            return false;
-        }
-        if c.require_shift && !self.is_shift_pressed() {
-            return false;
-        }
-        if c.require_super && !self.is_super_pressed() {
+        if self.config.chord.modifiers.is_empty() {
             return false;
         }
 
-        true
+        self.config.chord.modifiers.iter().all(|mod_name| {
+            crate::config::is_key_string_pressed(mod_name, &self.pressed_keys)
+        })
     }
 
     /// Handles an incoming key event.
@@ -179,15 +152,18 @@ impl KeyboardController {
 
     /// Handles one-shot actions triggered on key down.
     fn on_key_press(&mut self, key: KeyCode) -> Result<()> {
-        // Toggle modal mode: Alt + Shift + M (or Mod + Alt + M)
-        if key == KeyCode::KEY_M && (self.is_alt_pressed() && (self.is_shift_pressed() || self.is_super_pressed())) {
-            let current = self.modal_active.load(Ordering::SeqCst);
-            let next = !current;
+        let is_modal = self.modal_active.load(Ordering::SeqCst);
+
+        // 1. Toggle modal mode:
+        // Triggered when chord modifiers are active and configured toggle key is pressed,
+        // or when in modal mode and the toggle key is pressed.
+        if (self.chord_modifiers_active() || is_modal) && self.config.modal.toggle.matches(key) {
+            let next = !is_modal;
             self.modal_active.store(next, Ordering::SeqCst);
 
             if next {
                 info!("=== [🖱️ MOUSE MODE ACTIVATED - Keyboard Grabbed] ===");
-                println!("\n✨ [fckmouse] Mouse Mode ACTIVE! Use Arrows/WASD/HJKL to move, Space to click, Esc to exit.\n");
+                println!("\n✨ [fckmouse] Mouse Mode ACTIVE! Keystrokes exclusively control the mouse.\n");
             } else {
                 info!("=== [⌨️ MOUSE MODE DEACTIVATED - Keyboard Released] ===");
                 println!("\n🔙 [fckmouse] Mouse Mode EXITED. Returned to standard typing.\n");
@@ -195,57 +171,56 @@ impl KeyboardController {
             return Ok(());
         }
 
-        // 1. Instant Chord Actions (No need to enter Mouse Mode!)
-        // When Alt + Shift is held, allow direct clicking & scrolling on the fly:
-        if self.chord_modifiers_active() {
-            match key {
-                KeyCode::KEY_SPACE => {
-                    self.mouse.click(MouseButton::Left)?;
-                    return Ok(());
-                }
-                KeyCode::KEY_C => {
-                    self.mouse.click(MouseButton::Right)?;
-                    return Ok(());
-                }
-                KeyCode::KEY_V => {
-                    self.mouse.click(MouseButton::Middle)?;
-                    return Ok(());
-                }
-                KeyCode::KEY_R => {
-                    self.mouse.scroll_vertical(self.config.modal.scroll_speed)?;
-                    return Ok(());
-                }
-                KeyCode::KEY_F => {
-                    self.mouse.scroll_vertical(-self.config.modal.scroll_speed)?;
-                    return Ok(());
-                }
-                _ => {}
+        // 2. Instant Chord Actions (when chord modifiers are held and NOT in modal mode)
+        if !is_modal && self.chord_modifiers_active() {
+            if self.config.chord.left_click.matches(key) {
+                self.mouse.click(MouseButton::Left)?;
+                return Ok(());
+            }
+            if self.config.chord.right_click.matches(key) {
+                self.mouse.click(MouseButton::Right)?;
+                return Ok(());
+            }
+            if self.config.chord.middle_click.matches(key) {
+                self.mouse.click(MouseButton::Middle)?;
+                return Ok(());
+            }
+            if self.config.chord.scroll_up.matches(key) {
+                self.mouse.scroll_vertical(self.config.modal.scroll_speed)?;
+                return Ok(());
+            }
+            if self.config.chord.scroll_down.matches(key) {
+                self.mouse.scroll_vertical(-self.config.modal.scroll_speed)?;
+                return Ok(());
             }
         }
 
-        // 2. Modal Mouse Mode Actions (When exclusively in Mouse Mode)
-        if self.modal_active.load(Ordering::SeqCst) {
-            match key {
-                KeyCode::KEY_ESC => {
-                    self.modal_active.store(false, Ordering::SeqCst);
-                    println!("\n🔙 [fckmouse] Mouse Mode EXITED.\n");
-                }
-                KeyCode::KEY_SPACE => {
-                    self.mouse.click(MouseButton::Left)?;
-                }
-                KeyCode::KEY_C => {
-                    self.mouse.click(MouseButton::Right)?;
-                }
-                KeyCode::KEY_V => {
-                    self.mouse.click(MouseButton::Middle)?;
-                }
-                KeyCode::KEY_R => {
-                    self.mouse.scroll_vertical(self.config.modal.scroll_speed)?;
-                }
-                KeyCode::KEY_F => {
-                    self.mouse.scroll_vertical(-self.config.modal.scroll_speed)?;
-                }
-                _ => {}
+        // 3. Modal Mouse Mode Actions (When exclusively in Mouse Mode)
+        if is_modal {
+            if self.config.modal.exit.matches(key) {
+                self.modal_active.store(false, Ordering::SeqCst);
+                println!("\n🔙 [fckmouse] Mouse Mode EXITED.\n");
+                return Ok(());
+            }
+            if self.config.modal.left_click.matches(key) {
+                self.mouse.click(MouseButton::Left)?;
+                return Ok(());
+            }
+            if self.config.modal.right_click.matches(key) {
+                self.mouse.click(MouseButton::Right)?;
+                return Ok(());
+            }
+            if self.config.modal.middle_click.matches(key) {
+                self.mouse.click(MouseButton::Middle)?;
+                return Ok(());
+            }
+            if self.config.modal.scroll_up.matches(key) {
+                self.mouse.scroll_vertical(self.config.modal.scroll_speed)?;
+                return Ok(());
+            }
+            if self.config.modal.scroll_down.matches(key) {
+                self.mouse.scroll_vertical(-self.config.modal.scroll_speed)?;
+                return Ok(());
             }
         }
 
@@ -258,44 +233,34 @@ impl KeyboardController {
         let mut dir_y = 0;
 
         let is_modal = self.modal_active.load(Ordering::SeqCst);
-        let allow_arrows = (is_modal && self.config.modal.use_arrow_keys)
-            || (self.chord_modifiers_active() && self.config.chord.use_arrow_keys);
+        let is_chord = self.chord_modifiers_active();
 
-        let allow_wasd = (is_modal && self.config.modal.use_wasd_keys)
-            || (self.chord_modifiers_active() && self.config.chord.use_wasd_keys);
-
-        let allow_hjkl = is_modal && self.config.modal.use_hjkl_keys;
-
-        // Left
-        if (allow_arrows && self.pressed_keys.contains(&KeyCode::KEY_LEFT.code()))
-            || (allow_wasd && self.pressed_keys.contains(&KeyCode::KEY_A.code()))
-            || (allow_hjkl && self.pressed_keys.contains(&KeyCode::KEY_H.code()))
-        {
-            dir_x -= 1;
-        }
-
-        // Right
-        if (allow_arrows && self.pressed_keys.contains(&KeyCode::KEY_RIGHT.code()))
-            || (allow_wasd && self.pressed_keys.contains(&KeyCode::KEY_D.code()))
-            || (allow_hjkl && self.pressed_keys.contains(&KeyCode::KEY_L.code()))
-        {
-            dir_x += 1;
-        }
-
-        // Up
-        if (allow_arrows && self.pressed_keys.contains(&KeyCode::KEY_UP.code()))
-            || (allow_wasd && self.pressed_keys.contains(&KeyCode::KEY_W.code()))
-            || (allow_hjkl && self.pressed_keys.contains(&KeyCode::KEY_K.code()))
-        {
-            dir_y -= 1;
-        }
-
-        // Down
-        if (allow_arrows && self.pressed_keys.contains(&KeyCode::KEY_DOWN.code()))
-            || (allow_wasd && self.pressed_keys.contains(&KeyCode::KEY_S.code()))
-            || (allow_hjkl && self.pressed_keys.contains(&KeyCode::KEY_J.code()))
-        {
-            dir_y += 1;
+        if is_modal {
+            if self.config.modal.move_left.is_any_pressed(&self.pressed_keys) {
+                dir_x -= 1;
+            }
+            if self.config.modal.move_right.is_any_pressed(&self.pressed_keys) {
+                dir_x += 1;
+            }
+            if self.config.modal.move_up.is_any_pressed(&self.pressed_keys) {
+                dir_y -= 1;
+            }
+            if self.config.modal.move_down.is_any_pressed(&self.pressed_keys) {
+                dir_y += 1;
+            }
+        } else if is_chord {
+            if self.config.chord.move_left.is_any_pressed(&self.pressed_keys) {
+                dir_x -= 1;
+            }
+            if self.config.chord.move_right.is_any_pressed(&self.pressed_keys) {
+                dir_x += 1;
+            }
+            if self.config.chord.move_up.is_any_pressed(&self.pressed_keys) {
+                dir_y -= 1;
+            }
+            if self.config.chord.move_down.is_any_pressed(&self.pressed_keys) {
+                dir_y += 1;
+            }
         }
 
         (dir_x, dir_y)
@@ -305,8 +270,22 @@ impl KeyboardController {
     pub fn tick(&mut self) -> Result<()> {
         let (dir_x, dir_y) = self.calculate_direction();
 
-        let turbo = self.is_ctrl_pressed();
-        let precision = self.modal_active.load(Ordering::SeqCst) && self.is_shift_pressed();
+        let is_modal = self.modal_active.load(Ordering::SeqCst);
+        let is_chord = self.chord_modifiers_active();
+
+        let turbo = if is_modal {
+            self.config.modal.turbo.is_any_pressed(&self.pressed_keys)
+        } else if is_chord {
+            self.config.chord.turbo.is_any_pressed(&self.pressed_keys)
+        } else {
+            false
+        };
+
+        let precision = if is_modal {
+            self.config.modal.precision.is_any_pressed(&self.pressed_keys)
+        } else {
+            false
+        };
 
         let (dx, dy) = self.physics.step(dir_x, dir_y, turbo, precision);
 

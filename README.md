@@ -117,71 +117,81 @@ Output:
 fckmouse daemon
 ```
 
----
-
-## 🪟 Tiling Window Manager Integration (niri / Sway / Hyprland)
-
-### Autostart via `niri` (`~/.config/niri/config.kdl`):
-```kdl
-spawn-at-startup "fckmouse" "daemon"
-```
-
-### Optional: Direct Window Manager Hotkeys in `binds.kdl`
-If you prefer triggering cursor actions directly via compositor keybindings without running a background daemon:
-```kdl
-binds {
-    // Cursor Movement
-    Mod+Alt+Left  { spawn "fckmouse" "move" "--dx" "-30"; }
-    Mod+Alt+Right { spawn "fckmouse" "move" "--dx" "30"; }
-    Mod+Alt+Up    { spawn "fckmouse" "move" "--dy" "-30"; }
-    Mod+Alt+Down  { spawn "fckmouse" "move" "--dy" "30"; }
-
-    // Clicks
-    Mod+Alt+Space { spawn "fckmouse" "click" "--button" "left"; }
-    Mod+Alt+C     { spawn "fckmouse" "click" "--button" "right"; }
-    Mod+Alt+V     { spawn "fckmouse" "click" "--button" "middle"; }
-
-    // Scroll
-    Mod+Alt+R     { spawn "fckmouse" "scroll" "--dy" "2"; }
-    Mod+Alt+F     { spawn "fckmouse" "scroll" "--dy" "-2"; }
-}
-```
-
----
-
 ## ⚙️ Configuration (`~/.config/fckmouse/config.toml`)
 
-Generate the default documented configuration:
+`fckmouse` is fully customizable. You can bind any keys you like for movements, clicks, scrolls, and modifiers.
+
+Generate your configuration file:
 ```bash
 fckmouse init-config
 ```
 
-Customization options:
+### Full Configuration Reference:
 ```toml
 [chord]
+# Instant on-the-fly cursor movement and clicking using key chords.
 enabled = true
-require_alt = true
-require_shift = true
-require_super = false
-use_arrow_keys = true
-use_wasd_keys = true
-ctrl_turbo = true
+
+# Modifiers required to initiate chord cursor actions.
+# Customize with any modifier combination: ["alt", "shift"], ["super", "alt"], ["ctrl", "alt"], etc.
+modifiers = ["alt", "shift"]
+
+# Direction keys recognized when holding the chord modifiers:
+move_left = ["left", "a"]
+move_right = ["right", "d"]
+move_up = ["up", "w"]
+move_down = ["down", "s"]
+
+# Clicks and scrolls recognized when holding chord modifiers:
+left_click = "space"
+right_click = "c"
+middle_click = "v"
+scroll_up = "r"
+scroll_down = "f"
+
+# Speed multiplier key when holding chord:
+turbo = "ctrl"
+
 
 [modal]
+# Vim-style Mouse Mode (exclusive keyboard lock via EVIOCGRAB):
 enabled = true
-use_arrow_keys = true
-use_wasd_keys = true
-use_hjkl_keys = true
-scroll_speed = 1
+
+# Key to toggle Mouse Mode (when chord modifiers are held):
+toggle = "m"
+
+# Key to exit Mouse Mode back to normal typing:
+exit = "esc"
+
+# Direction keys in Mouse Mode (e.g. arrows, WASD, and HJKL):
+move_left = ["left", "a", "h"]
+move_right = ["right", "d", "l"]
+move_up = ["up", "w", "k"]
+move_down = ["down", "s", "j"]
+
+# Actions in Mouse Mode:
+left_click = "space"
+right_click = "c"
+middle_click = "v"
+scroll_up = "r"
+scroll_down = "f"
+
+# Modifiers inside Mouse Mode:
+precision = "shift"    # Hold for 0.3x slow precision crawl
+turbo = "ctrl"         # Hold for 3.0x turbo speed
+scroll_speed = 1       # Scroll wheel notches per tick
+
 
 [physics]
+# Movement physics and acceleration curve:
 base_speed = 2.5            # Starting speed (pixels per 10ms tick)
-max_speed = 28.0            # Terminal speed under sustained hold
+max_speed = 28.0            # Maximum terminal speed under sustained hold
 acceleration = 35.0         # Rate of acceleration per second
-turbo_multiplier = 3.0      # Multiplier when Ctrl is held
-precision_multiplier = 0.3  # Multiplier when Shift is held in modal mode
+turbo_multiplier = 3.0      # Multiplier when Turbo key is held
+precision_multiplier = 0.3  # Multiplier when Precision key is held
 tick_rate_ms = 10           # Physics update frequency (10ms = 100 Hz)
 ```
+
 
 ---
 
