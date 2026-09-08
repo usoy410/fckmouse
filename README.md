@@ -1,14 +1,12 @@
 <div align="center">
 
-# 🖱️ fckmouse
+<img src="./fckmouse_logo.png" alt="fckmouse logo" width="280" />
 
-**Zero-latency, zero-conflict keyboard-driven mouse navigation daemon for Linux tiling window managers.**
+# fckmouse
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Rust](https://img.shields.io/badge/Rust-1.85+-orange.svg)](https://www.rust-lang.org)
 [![Platform](https://img.shields.io/badge/Platform-Linux%20(Wayland%20%2F%20X11)-blue.svg)](#)
-
-*Never take your hands off the keyboard again.*
 
 </div>
 
