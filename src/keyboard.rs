@@ -95,11 +95,11 @@ pub struct KeyboardController {
     mouse: MouseDevice,
     physics: MovementPhysics,
     pressed_keys: HashSet<u16>,
-    modal_active: bool,
+    modal_active: Arc<AtomicBool>,
 }
 
 impl KeyboardController {
-    pub fn new(config: AppConfig) -> Result<Self> {
+    pub fn new(config: AppConfig, modal_active: Arc<AtomicBool>) -> Result<Self> {
         let mouse = MouseDevice::new()?;
         let physics = MovementPhysics::new(config.physics.clone());
         Ok(Self {
@@ -107,7 +107,7 @@ impl KeyboardController {
             mouse,
             physics,
             pressed_keys: HashSet::new(),
-            modal_active: false,
+            modal_active,
         })
     }
 
@@ -181,22 +181,53 @@ impl KeyboardController {
     fn on_key_press(&mut self, key: KeyCode) -> Result<()> {
         // Toggle modal mode: Alt + Shift + M (or Mod + Alt + M)
         if key == KeyCode::KEY_M && (self.is_alt_pressed() && (self.is_shift_pressed() || self.is_super_pressed())) {
-            self.modal_active = !self.modal_active;
-            if self.modal_active {
-                info!("=== [🖱️ MOUSE MODE ACTIVATED] ===");
+            let current = self.modal_active.load(Ordering::SeqCst);
+            let next = !current;
+            self.modal_active.store(next, Ordering::SeqCst);
+
+            if next {
+                info!("=== [🖱️ MOUSE MODE ACTIVATED - Keyboard Grabbed] ===");
                 println!("\n✨ [fckmouse] Mouse Mode ACTIVE! Use Arrows/WASD/HJKL to move, Space to click, Esc to exit.\n");
             } else {
-                info!("=== [⌨️ MOUSE MODE DEACTIVATED] ===");
+                info!("=== [⌨️ MOUSE MODE DEACTIVATED - Keyboard Released] ===");
                 println!("\n🔙 [fckmouse] Mouse Mode EXITED. Returned to standard typing.\n");
             }
             return Ok(());
         }
 
-        // Modal Mode Actions
-        if self.modal_active {
+        // 1. Instant Chord Actions (No need to enter Mouse Mode!)
+        // When Alt + Shift is held, allow direct clicking & scrolling on the fly:
+        if self.chord_modifiers_active() {
+            match key {
+                KeyCode::KEY_SPACE => {
+                    self.mouse.click(MouseButton::Left)?;
+                    return Ok(());
+                }
+                KeyCode::KEY_C => {
+                    self.mouse.click(MouseButton::Right)?;
+                    return Ok(());
+                }
+                KeyCode::KEY_V => {
+                    self.mouse.click(MouseButton::Middle)?;
+                    return Ok(());
+                }
+                KeyCode::KEY_R => {
+                    self.mouse.scroll_vertical(self.config.modal.scroll_speed)?;
+                    return Ok(());
+                }
+                KeyCode::KEY_F => {
+                    self.mouse.scroll_vertical(-self.config.modal.scroll_speed)?;
+                    return Ok(());
+                }
+                _ => {}
+            }
+        }
+
+        // 2. Modal Mouse Mode Actions (When exclusively in Mouse Mode)
+        if self.modal_active.load(Ordering::SeqCst) {
             match key {
                 KeyCode::KEY_ESC => {
-                    self.modal_active = false;
+                    self.modal_active.store(false, Ordering::SeqCst);
                     println!("\n🔙 [fckmouse] Mouse Mode EXITED.\n");
                 }
                 KeyCode::KEY_SPACE => {
@@ -226,13 +257,14 @@ impl KeyboardController {
         let mut dir_x = 0;
         let mut dir_y = 0;
 
-        let allow_arrows = (self.modal_active && self.config.modal.use_arrow_keys)
+        let is_modal = self.modal_active.load(Ordering::SeqCst);
+        let allow_arrows = (is_modal && self.config.modal.use_arrow_keys)
             || (self.chord_modifiers_active() && self.config.chord.use_arrow_keys);
 
-        let allow_wasd = (self.modal_active && self.config.modal.use_wasd_keys)
+        let allow_wasd = (is_modal && self.config.modal.use_wasd_keys)
             || (self.chord_modifiers_active() && self.config.chord.use_wasd_keys);
 
-        let allow_hjkl = self.modal_active && self.config.modal.use_hjkl_keys;
+        let allow_hjkl = is_modal && self.config.modal.use_hjkl_keys;
 
         // Left
         if (allow_arrows && self.pressed_keys.contains(&KeyCode::KEY_LEFT.code()))
@@ -274,7 +306,7 @@ impl KeyboardController {
         let (dir_x, dir_y) = self.calculate_direction();
 
         let turbo = self.is_ctrl_pressed();
-        let precision = self.modal_active && self.is_shift_pressed();
+        let precision = self.modal_active.load(Ordering::SeqCst) && self.is_shift_pressed();
 
         let (dx, dy) = self.physics.step(dir_x, dir_y, turbo, precision);
 
@@ -303,30 +335,33 @@ pub fn run_event_loop(config: AppConfig, running: Arc<AtomicBool>) -> Result<()>
         ));
     }
 
+    let modal_active = Arc::new(AtomicBool::new(false));
     let (tx, rx): (Sender<RawKeyEvent>, Receiver<RawKeyEvent>) = channel();
 
     // Spawn a listener thread for each detected keyboard device
     for path in keyboards {
         let tx_clone = tx.clone();
         let running_clone = running.clone();
+        let modal_clone = modal_active.clone();
         let path_clone = path.clone();
 
         thread::Builder::new()
             .name(format!("kbd-{:?}", path.file_name()))
             .spawn(move || {
-                listen_keyboard_worker(path_clone, tx_clone, running_clone);
+                listen_keyboard_worker(path_clone, tx_clone, running_clone, modal_clone);
             })
             .context("Failed to spawn keyboard listener thread")?;
     }
 
-    let mut controller = KeyboardController::new(config)?;
+    let mut controller = KeyboardController::new(config, modal_active.clone())?;
     let tick_dur = controller.tick_interval();
 
     info!("fckmouse daemon is running. Press Ctrl+C to terminate.");
     println!("🚀 fckmouse daemon started successfully!");
     println!("👉 Instant Chord: Hold Alt + Shift + Arrow (or WASD) to move cursor");
+    println!("👉 Instant Clicks: Hold Alt + Shift + Space (Left Click), C (Right Click), V (Middle Click)");
     println!("👉 Turbo Speed:   Hold Ctrl + Alt + Shift + Arrow for 3x speed");
-    println!("👉 Modal Mode:    Press Alt + Shift + M to toggle full Mouse Mode (Arrows, Space=Click, Esc=Exit)\n");
+    println!("👉 Modal Mode:    Press Alt + Shift + M for exclusive Mouse Mode (prevents typing in apps!)\n");
 
     while running.load(Ordering::SeqCst) {
         // Drain all pending keyboard events from workers
@@ -344,11 +379,20 @@ pub fn run_event_loop(config: AppConfig, running: Arc<AtomicBool>) -> Result<()>
         sleep(tick_dur);
     }
 
+    // Ensure all exclusive grabs are released on exit
+    modal_active.store(false, Ordering::SeqCst);
+    sleep(Duration::from_millis(15));
+
     info!("fckmouse daemon shutting down cleanly.");
     Ok(())
 }
 
-fn listen_keyboard_worker(path: PathBuf, tx: Sender<RawKeyEvent>, running: Arc<AtomicBool>) {
+fn listen_keyboard_worker(
+    path: PathBuf,
+    tx: Sender<RawKeyEvent>,
+    running: Arc<AtomicBool>,
+    modal_active: Arc<AtomicBool>,
+) {
     let mut device = match Device::open(&path) {
         Ok(dev) => dev,
         Err(e) => {
@@ -357,7 +401,24 @@ fn listen_keyboard_worker(path: PathBuf, tx: Sender<RawKeyEvent>, running: Arc<A
         }
     };
 
+    let _ = device.set_nonblocking(true);
+
     while running.load(Ordering::SeqCst) {
+        let is_modal = modal_active.load(Ordering::SeqCst);
+        if is_modal != device.is_grabbed() {
+            if is_modal {
+                if let Err(e) = device.grab() {
+                    warn!("Failed to exclusively grab keyboard {:?}: {}", path, e);
+                } else {
+                    info!("Exclusive grab active on {:?}", path);
+                }
+            } else {
+                let _ = device.ungrab();
+                info!("Exclusive grab released on {:?}", path);
+            }
+        }
+
+        let mut receiver_closed = false;
         match device.fetch_events() {
             Ok(events) => {
                 for ev in events {
@@ -367,15 +428,27 @@ fn listen_keyboard_worker(path: PathBuf, tx: Sender<RawKeyEvent>, running: Arc<A
                             value: ev.value(),
                         };
                         if tx.send(raw).is_err() {
-                            return; // receiver closed
+                            receiver_closed = true;
+                            break;
                         }
                     }
                 }
             }
             Err(e) => {
-                debug!("Device {:?} fetch_events: {}", path, e);
-                sleep(Duration::from_millis(50));
+                if e.kind() == std::io::ErrorKind::WouldBlock {
+                    sleep(Duration::from_millis(4));
+                } else {
+                    debug!("Device {:?} fetch_events: {}", path, e);
+                    sleep(Duration::from_millis(50));
+                }
             }
         }
+
+        if receiver_closed {
+            let _ = device.ungrab();
+            return;
+        }
     }
+
+    let _ = device.ungrab();
 }
