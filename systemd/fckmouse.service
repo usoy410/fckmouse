@@ -1,0 +1,13 @@
+[Unit]
+Description=fckmouse - Zero-Latency Keyboard-Driven Mouse Navigation Daemon
+Documentation=https://github.com/usoy/fckmouse
+After=graphical-session.target
+
+[Service]
+Type=simple
+ExecStart=%h/.cargo/bin/fckmouse daemon
+Restart=on-failure
+RestartSec=2s
+
+[Install]
+WantedBy=default.target
