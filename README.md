@@ -1,65 +1,153 @@
+<div align="center">
+
 # 🖱️ fckmouse
 
-> **Zero-latency, zero-conflict keyboard-driven mouse navigation daemon for Linux tiling window managers (Wayland & X11).**
+**Zero-latency, zero-conflict keyboard-driven mouse navigation daemon for Linux tiling window managers.**
 
-Never take your hands off the keyboard again. `fckmouse` creates a Linux kernel-level virtual mouse using `/dev/uinput` and translates keyboard chords and modal keystrokes into fluid, pixel-perfect cursor movement and clicks.
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Rust](https://img.shields.io/badge/Rust-1.85+-orange.svg)](https://www.rust-lang.org)
+[![Platform](https://img.shields.io/badge/Platform-Linux%20(Wayland%20%2F%20X11)-blue.svg)](#)
 
----
+*Never take your hands off the keyboard again.*
 
-## ⚡ Features
-
-- **Zero Input Conflict**: Carefully engineered defaults (`Alt + Shift + Arrows / WASD`) that never clash with your text editors, terminal readline, browser shortcuts, or window manager bindings.
-- **True Linux Kernel Virtual Mouse (`/dev/uinput`)**: Emits genuine hardware mouse events. Universally supported across **Wayland** (niri, Sway, Hyprland, River), **X11**, and Linux TTY without requiring root or `sudo`.
-- **Dual-Layered Navigation**:
-  - **Instant Chords**: Nudge the cursor on-the-fly without changing modes.
-  - **Modal Mouse Mode**: Tap a hotkey to enter full mouse mode with clicks, middle clicks, and scrolling.
-- **Progressive Physics & Acceleration**:
-  - Single-pixel micro-stepping on initial tap for precise button/link targeting.
-  - Quadratic acceleration curve while held down to glide effortlessly across 1440p / 4K displays.
-  - Turbo multiplier (**Ctrl**) for flying across multi-monitor workspaces.
-- **Window Manager CLI Integration**: Also supports instant one-shot commands (`fckmouse move`, `fckmouse click`, `fckmouse scroll`) directly bindable in compositor configs like `niri` or `sway`.
-- **System Doctor**: Built-in `fckmouse doctor` command to diagnose input permissions and display sessions automatically.
+</div>
 
 ---
 
-## 🎮 Keybindings & Controls
+## 📖 Overview
 
-### 1. Instant Chord Mode (No Mode Switching Needed!)
-You do **not** need to enter Mouse Mode to click or move! While holding `Alt + Shift`:
+`fckmouse` creates a Linux kernel-level virtual mouse device (`/dev/uinput`) that translates keyboard chords and modal keystrokes into fluid, pixel-perfect cursor movement, clicking, and scrolling.
 
-| Shortcut | Action |
-| :--- | :--- |
-| **`Alt + Shift + Arrows`** | Move cursor (smooth acceleration) |
-| **`Alt + Shift + WASD`** | Move cursor (left-hand friendly) |
-| **`Ctrl + Alt + Shift + Arrows`** | **Turbo Boost** (3x speed across monitors) |
-| **`Alt + Shift + Space`** | **Left Click** |
-| **`Alt + Shift + C`** | **Right Click** |
-| **`Alt + Shift + V`** | **Middle Click** (open links in new tab) |
-| **`Alt + Shift + R`** | **Scroll Up** |
-| **`Alt + Shift + F`** | **Scroll Down** |
-
-> **Why `Alt + Shift`?**
-> Standard combinations like `Shift + Arrow` break text selection/highlighting, `Ctrl + Arrow` breaks word navigation, and `Ctrl + WASD` catastrophically closes tabs (`Ctrl+W`) or selects all (`Ctrl+A`). `Alt + Shift` is completely untouched by standard editors, shells, and desktop applications.
+It works natively across all **Wayland compositors** ([niri](https://github.com/YaLTeR/niri), Sway, Hyprland, River), **X11**, and Linux TTY without requiring `sudo` or micro-libraries.
 
 ---
 
-### 2. Modal Mouse Mode (Vim-Style)
-For continuous mouse navigation and web browsing without holding down multi-key chords.
+## ✨ Features
 
-- **Toggle Mouse Mode**: Press **`Alt + Shift + M`** (or `Mod + Alt + M`).
-- When active, your keyboard becomes a dedicated mouse controller:
+- 🛡️ **Zero-Conflict Design**: Default keybindings (`Alt + Shift + ...`) avoid collisions with text selection (`Shift + Arrow`), word navigation (`Ctrl + Arrow`), browser commands (`Ctrl + W/A/S/D`), and window manager shortcuts.
+- ⚡ **Zero-Latency Virtual Mouse (`/dev/uinput`)**: Emits hardware-level relative events (`REL_X`, `REL_Y`, `REL_WHEEL`) and button events (`BTN_LEFT`, `BTN_RIGHT`, `BTN_MIDDLE`).
+- 🔒 **Exclusive Keyboard Grabbing**: When entering Mouse Mode, `fckmouse` grabs the keyboard via kernel `EVIOCGRAB`. Keystrokes control the mouse and **never leak or type into your open documents or browser**.
+- 📈 **Progressive Acceleration Curve**: Single-pixel crawl ($1\text{–}2.5\text{px}$) on quick taps for clicking tiny links; smooth quadratic acceleration ramping up to $28\text{px/tick}$ on sustained hold.
+- 🚀 **Turbo & Precision Multipliers**: Hold `Ctrl` for instant $3\times$ speed across multi-monitor setups, or `Shift` for $0.3\times$ precision crawl.
+- 🪟 **Window Manager CLI**: Supports instant one-shot subcommands (`fckmouse move`, `fckmouse click`, `fckmouse scroll`) directly bindable in window manager configs.
+- 🩺 **Built-in Doctor (`fckmouse doctor`)**: Instant diagnostics of `/dev/uinput`, `/dev/input/event*`, and user group permissions.
 
-| Key | Action |
-| :--- | :--- |
-| **`Arrows` / `WASD` / `HJKL`** | Move cursor with acceleration |
-| **`Space`** | **Left Click** |
-| **`C`** | **Right Click** |
-| **`V`** | **Middle Click** |
-| **`R`** | **Scroll Up** |
-| **`F`** | **Scroll Down** |
-| **`Shift` (Hold)** | **Precision Crawl** ($0.3\times$ slow-motion) |
-| **`Ctrl` (Hold)** | **Turbo Boost** ($3\times$ speed) |
-| **`Esc`** or **`Alt + Shift + M`** | **Exit Mouse Mode** back to standard typing |
+---
+
+## 🎮 How to Use (Cheat Sheet)
+
+You have **two ways** to control your cursor:
+
+### Method 1: Instant Chords (No Mode Switching)
+Move, click, and scroll on-the-fly while typing without entering any mode.
+
+| Key Combination | Action | Description |
+| :--- | :--- | :--- |
+| **`Alt + Shift + Arrows`** | **Move Cursor** | Glides cursor with acceleration curve |
+| **`Alt + Shift + WASD`** | **Move Cursor** | Left-hand ergonomic movement |
+| **`Ctrl + Alt + Shift + Arrows`** | **Turbo Move** | $3\times$ speed boost to jump across displays |
+| **`Alt + Shift + Space`** | **Left Click** | Standard left mouse click |
+| **`Alt + Shift + C`** | **Right Click** | Context menu / right click |
+| **`Alt + Shift + V`** | **Middle Click** | Open link in new tab / paste clipboard |
+| **`Alt + Shift + R`** | **Scroll Up** | Scroll wheel up |
+| **`Alt + Shift + F`** | **Scroll Down** | Scroll wheel down |
+
+---
+
+### Method 2: Modal Mouse Mode (Exclusive Full Mouse Lock)
+For extended mouse navigation and web browsing without holding down multi-key chords.
+
+1. Press **`Alt + Shift + M`** to toggle **Mouse Mode**.
+2. The keyboard is exclusively locked for mouse control (**no letters will type into applications**):
+
+| Key | Action | Description |
+| :--- | :--- | :--- |
+| **`Arrows` / `WASD` / `HJKL`** | **Move Cursor** | Smooth acceleration (supports diagonal motion) |
+| **`Space`** | **Left Click** | Standard left mouse click |
+| **`C`** | **Right Click** | Context menu / right click |
+| **`V`** | **Middle Click** | Open links in new tab / terminal paste |
+| **`R`** | **Scroll Up** | Wheel scroll up |
+| **`F`** | **Scroll Down** | Wheel scroll down |
+| **`Shift` (Hold)** | **Precision Crawl** | $0.3\times$ slow-motion speed for pixel-perfect targeting |
+| **`Ctrl` (Hold)** | **Turbo Boost** | $3\times$ speed boost across multiple monitors |
+| **`Esc`** or **`Alt + Shift + M`** | **Exit Mouse Mode** | Releases keyboard grab and returns immediately to normal typing |
+
+---
+
+## 🚀 Quick Start & Installation
+
+### 1. Pre-built Binary or Source Build
+```bash
+# Clone the repository
+git clone https://github.com/usoy410/fckmouse.git
+cd fckmouse
+
+# Build optimized release binary
+cargo build --release
+
+# Install to ~/.local/bin
+install -m 755 target/release/fckmouse ~/.local/bin/
+```
+
+### 2. One-Time Permission Setup
+To allow `fckmouse daemon` to read global keyboard events without `sudo`:
+```bash
+sudo usermod -aG input $USER
+```
+> [!IMPORTANT]
+> Log out and log back in (or reboot) so Arch Linux / your distribution applies your new `input` group permissions.
+
+### 3. Verify with Doctor
+```bash
+fckmouse doctor
+```
+Output:
+```
+🖥️  Session Environment:
+   • Desktop / WM : niri
+   • Session Type : wayland
+
+🖱️  Virtual Mouse (/dev/uinput):
+   ✅ /dev/uinput is WRITABLE. Virtual mouse works out of the box!
+
+⌨️  Keyboard Devices (/dev/input/):
+   ✅ Found 2 accessible keyboard device(s)
+```
+
+### 4. Run the Daemon
+```bash
+fckmouse daemon
+```
+
+---
+
+## 🪟 Tiling Window Manager Integration (niri / Sway / Hyprland)
+
+### Autostart via `niri` (`~/.config/niri/config.kdl`):
+```kdl
+spawn-at-startup "fckmouse" "daemon"
+```
+
+### Optional: Direct Window Manager Hotkeys in `binds.kdl`
+If you prefer triggering cursor actions directly via compositor keybindings without running a background daemon:
+```kdl
+binds {
+    // Cursor Movement
+    Mod+Alt+Left  { spawn "fckmouse" "move" "--dx" "-30"; }
+    Mod+Alt+Right { spawn "fckmouse" "move" "--dx" "30"; }
+    Mod+Alt+Up    { spawn "fckmouse" "move" "--dy" "-30"; }
+    Mod+Alt+Down  { spawn "fckmouse" "move" "--dy" "30"; }
+
+    // Clicks
+    Mod+Alt+Space { spawn "fckmouse" "click" "--button" "left"; }
+    Mod+Alt+C     { spawn "fckmouse" "click" "--button" "right"; }
+    Mod+Alt+V     { spawn "fckmouse" "click" "--button" "middle"; }
+
+    // Scroll
+    Mod+Alt+R     { spawn "fckmouse" "scroll" "--dy" "2"; }
+    Mod+Alt+F     { spawn "fckmouse" "scroll" "--dy" "-2"; }
+}
+```
 
 ---
 
@@ -70,7 +158,7 @@ Generate the default documented configuration:
 fckmouse init-config
 ```
 
-Example configuration:
+Customization options:
 ```toml
 [chord]
 enabled = true
@@ -92,63 +180,9 @@ scroll_speed = 1
 base_speed = 2.5            # Starting speed (pixels per 10ms tick)
 max_speed = 28.0            # Terminal speed under sustained hold
 acceleration = 35.0         # Rate of acceleration per second
-turbo_multiplier = 3.0      # Speed multiplier when Ctrl is held
-precision_multiplier = 0.3  # Speed multiplier when Shift is held in modal mode
+turbo_multiplier = 3.0      # Multiplier when Ctrl is held
+precision_multiplier = 0.3  # Multiplier when Shift is held in modal mode
 tick_rate_ms = 10           # Physics update frequency (10ms = 100 Hz)
-```
-
----
-
-## 🚀 Installation & Setup
-
-### 1. Build & Install
-```bash
-cargo build --release
-cp target/release/fckmouse ~/.local/bin/
-```
-
-### 2. Check Permissions (`doctor`)
-Run diagnostics to verify system access:
-```bash
-fckmouse doctor
-```
-
-- `/dev/uinput` is typically writable out-of-the-box on modern Linux via systemd ACLs.
-- To enable global keyboard reading for the background daemon without root, ensure your user is in the `input` group:
-  ```bash
-  sudo usermod -aG input $USER
-  ```
-  *(Then log out and log back in, or run `newgrp input`)*.
-
----
-
-## 🪟 Niri / Tiling Window Manager Integration
-
-You can autostart `fckmouse daemon` or bind direct CLI actions in your window manager config.
-
-### Autostarting Daemon in `niri` (`~/.config/niri/config.kdl`):
-```kdl
-spawn-at-startup "fckmouse" "daemon"
-```
-
-### Optional: Direct Window Manager Hotkeys in `binds.kdl`
-If you prefer triggering mouse actions directly from `niri` without running a background listener:
-```kdl
-binds {
-    // Quick cursor nudges
-    Mod+Alt+Left  { spawn "fckmouse" "move" "--dx" "-25"; }
-    Mod+Alt+Right { spawn "fckmouse" "move" "--dx" "25"; }
-    Mod+Alt+Up    { spawn "fckmouse" "move" "--dy" "-25"; }
-    Mod+Alt+Down  { spawn "fckmouse" "move" "--dy" "25"; }
-
-    // Left click & Right click
-    Mod+Alt+Space { spawn "fckmouse" "click" "--button" "left"; }
-    Mod+Alt+C     { spawn "fckmouse" "click" "--button" "right"; }
-
-    // Scroll
-    Mod+Alt+Page_Up   { spawn "fckmouse" "scroll" "--dy" "2"; }
-    Mod+Alt+Page_Down { spawn "fckmouse" "scroll" "--dy" "-2"; }
-}
 ```
 
 ---
@@ -163,17 +197,13 @@ systemctl --user daemon-reload
 systemctl --user enable --now fckmouse
 ```
 
----
-
-## 🧪 Testing
-
-Run unit tests:
+Check logs anytime:
 ```bash
-cargo test
+journalctl --user -u fckmouse -f
 ```
 
 ---
 
 ## 📄 License
 
-MIT
+MIT License. See [LICENSE](LICENSE) for details.
