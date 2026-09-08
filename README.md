@@ -24,14 +24,19 @@ Never take your hands off the keyboard again. `fckmouse` creates a Linux kernel-
 
 ## 🎮 Keybindings & Controls
 
-### 1. Instant Chord Mode (Default)
-Glide the mouse cursor on the fly without entering any mode.
+### 1. Instant Chord Mode (No Mode Switching Needed!)
+You do **not** need to enter Mouse Mode to click or move! While holding `Alt + Shift`:
 
 | Shortcut | Action |
 | :--- | :--- |
 | **`Alt + Shift + Arrows`** | Move cursor (smooth acceleration) |
 | **`Alt + Shift + WASD`** | Move cursor (left-hand friendly) |
 | **`Ctrl + Alt + Shift + Arrows`** | **Turbo Boost** (3x speed across monitors) |
+| **`Alt + Shift + Space`** | **Left Click** |
+| **`Alt + Shift + C`** | **Right Click** |
+| **`Alt + Shift + V`** | **Middle Click** (open links in new tab) |
+| **`Alt + Shift + R`** | **Scroll Up** |
+| **`Alt + Shift + F`** | **Scroll Down** |
 
 > **Why `Alt + Shift`?**
 > Standard combinations like `Shift + Arrow` break text selection/highlighting, `Ctrl + Arrow` breaks word navigation, and `Ctrl + WASD` catastrophically closes tabs (`Ctrl+W`) or selects all (`Ctrl+A`). `Alt + Shift` is completely untouched by standard editors, shells, and desktop applications.
