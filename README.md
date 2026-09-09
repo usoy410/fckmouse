@@ -16,18 +16,22 @@
 
 `fckmouse` creates a Linux kernel-level virtual mouse device (`/dev/uinput`) that translates keyboard chords and modal keystrokes into fluid, pixel-perfect cursor movement, clicking, and scrolling.
 
-It works natively across all **Wayland compositors** ([niri](https://github.com/YaLTeR/niri), Sway, Hyprland, River), **X11**, and Linux TTY without requiring `sudo` or micro-libraries.
+It works in **all desktop environments** (GNOME, KDE, XFCE, etc.), **all Wayland compositors** (niri, Sway, Hyprland), and **X11** on **any Linux distribution** — except non-Linux OSes (macOS/Windows).
+
+### 📦 Dependencies & Requirements
+- **Linux Kernel**: with `/dev/uinput` enabled (standard on all modern distros).
+- **User Permissions**: user in the `input` group (`sudo usermod -aG input $USER`).
+- **Zero Runtime Dependencies**: self-contained binary (no external C libraries, Python, or compositor-specific tools required).
 
 ---
 
 ## ✨ Features
 
-- 🛡️ **Zero-Conflict Design**: Default keybindings (`Alt + Shift + ...`) avoid collisions with text selection (`Shift + Arrow`), word navigation (`Ctrl + Arrow`), browser commands (`Ctrl + W/A/S/D`), and window manager shortcuts.
 - ⚡ **Zero-Latency Virtual Mouse (`/dev/uinput`)**: Emits hardware-level relative events (`REL_X`, `REL_Y`, `REL_WHEEL`) and button events (`BTN_LEFT`, `BTN_RIGHT`, `BTN_MIDDLE`).
 - 🔒 **Exclusive Keyboard Grabbing**: When entering Mouse Mode, `fckmouse` grabs the keyboard via kernel `EVIOCGRAB`. Keystrokes control the mouse and **never leak or type into your open documents or browser**.
 - 📈 **Progressive Acceleration Curve**: Single-pixel crawl ($1\text{–}2.5\text{px}$) on quick taps for clicking tiny links; smooth quadratic acceleration ramping up to $28\text{px/tick}$ on sustained hold.
 - 🚀 **Turbo & Precision Multipliers**: Hold `Ctrl` for instant $3\times$ speed across multi-monitor setups, or `Shift` for $0.3\times$ precision crawl.
-- 🪟 **Window Manager CLI**: Supports instant one-shot subcommands (`fckmouse move`, `fckmouse click`, `fckmouse scroll`) directly bindable in window manager configs.
+- 🪟 **Desktop & CLI Shortcuts**: Supports instant one-shot subcommands (`fckmouse move`, `fckmouse click`, `fckmouse scroll`) bindable to desktop or window manager hotkeys.
 - 🔌 **Dynamic USB Hotplug & Multi-Device**: Automatically detects when keyboards are plugged, unplugged, or re-enumerated when connecting/disconnecting external USB devices without restarting the daemon.
 - 🩺 **Built-in Doctor (`fckmouse doctor`)**: Instant diagnostics of `/dev/uinput`, `/dev/input/event*`, and user group permissions.
 
