@@ -89,13 +89,16 @@ pub fn discover_keyboards() -> Result<Vec<PathBuf>> {
     Ok(keyboards)
 }
 
-/// Tracks the active state of keyboard keys and handles chord/modal logic.
+/// Tracks the active state of keyboard keys and handles modal logic.
 pub struct KeyboardController {
     config: AppConfig,
     mouse: MouseDevice,
     physics: MovementPhysics,
     pressed_keys: HashSet<u16>,
     modal_active: Arc<AtomicBool>,
+    pending_grab: bool,
+    pending_grab_start: Option<std::time::Instant>,
+    scroll_tick_counter: u32,
 }
 
 impl KeyboardController {
@@ -108,22 +111,19 @@ impl KeyboardController {
             physics,
             pressed_keys: HashSet::new(),
             modal_active,
+            pending_grab: false,
+            pending_grab_start: None,
+            scroll_tick_counter: 0,
         })
     }
 
-
-
-    /// Returns true if the configured chord modifiers are currently satisfied.
-    pub fn chord_modifiers_active(&self) -> bool {
-        if !self.config.chord.enabled {
+    /// Checks if the configured toggle chord modifiers (e.g. ["alt", "shift"]) are all pressed.
+    pub fn is_toggle_chord_active(&self) -> bool {
+        if self.config.modal.toggle_modifiers.is_empty() {
             return false;
         }
 
-        if self.config.chord.modifiers.is_empty() {
-            return false;
-        }
-
-        self.config.chord.modifiers.iter().all(|mod_name| {
+        self.config.modal.toggle_modifiers.iter().all(|mod_name| {
             crate::config::is_key_string_pressed(mod_name, &self.pressed_keys)
         })
     }
@@ -152,54 +152,36 @@ impl KeyboardController {
 
     /// Handles one-shot actions triggered on key down.
     fn on_key_press(&mut self, key: KeyCode) -> Result<()> {
-        let is_modal = self.modal_active.load(Ordering::SeqCst);
+        let is_modal = self.modal_active.load(Ordering::SeqCst) || self.pending_grab;
 
         // 1. Toggle modal mode:
-        // Triggered when chord modifiers are active and configured toggle key is pressed,
+        // Triggered when toggle modifiers (e.g. Alt+Shift) are held and toggle key (e.g. M) is pressed,
         // or when in modal mode and the toggle key is pressed.
-        if (self.chord_modifiers_active() || is_modal) && self.config.modal.toggle.matches(key) {
-            let next = !is_modal;
-            self.modal_active.store(next, Ordering::SeqCst);
-
-            if next {
-                info!("=== [🖱️ MOUSE MODE ACTIVATED - Keyboard Grabbed] ===");
-                println!("\n✨ [fckmouse] Mouse Mode ACTIVE! Keystrokes exclusively control the mouse.\n");
-            } else {
+        if (self.is_toggle_chord_active() || is_modal) && self.config.modal.toggle.matches(key) {
+            if is_modal {
+                self.pending_grab = false;
+                self.pending_grab_start = None;
+                self.modal_active.store(false, Ordering::SeqCst);
                 info!("=== [⌨️ MOUSE MODE DEACTIVATED - Keyboard Released] ===");
                 println!("\n🔙 [fckmouse] Mouse Mode EXITED. Returned to standard typing.\n");
+            } else {
+                // Clean grab transition: wait until Alt and Shift are released before grabbing.
+                // This ensures Wayland/X11 receives key-up events, preventing stuck modifiers and duplicate window clicks!
+                self.pending_grab = true;
+                self.pending_grab_start = Some(std::time::Instant::now());
+                info!("=== [🖱️ MOUSE MODE ACTIVATING - Waiting for modifier release] ===");
+                println!("\n✨ [fckmouse] Mouse Mode activating... Release Alt+Shift to engage exclusive lock.\n");
             }
             return Ok(());
         }
 
-        // 2. Instant Chord Actions (when chord modifiers are held and NOT in modal mode)
-        if !is_modal && self.chord_modifiers_active() {
-            if self.config.chord.left_click.matches(key) {
-                self.mouse.click(MouseButton::Left)?;
-                return Ok(());
-            }
-            if self.config.chord.right_click.matches(key) {
-                self.mouse.click(MouseButton::Right)?;
-                return Ok(());
-            }
-            if self.config.chord.middle_click.matches(key) {
-                self.mouse.click(MouseButton::Middle)?;
-                return Ok(());
-            }
-            if self.config.chord.scroll_up.matches(key) {
-                self.mouse.scroll_vertical(self.config.modal.scroll_speed)?;
-                return Ok(());
-            }
-            if self.config.chord.scroll_down.matches(key) {
-                self.mouse.scroll_vertical(-self.config.modal.scroll_speed)?;
-                return Ok(());
-            }
-        }
-
-        // 3. Modal Mouse Mode Actions (When exclusively in Mouse Mode)
+        // 2. Modal Mouse Mode Actions (When exclusively in Mouse Mode or pending grab)
         if is_modal {
             if self.config.modal.exit.matches(key) {
+                self.pending_grab = false;
+                self.pending_grab_start = None;
                 self.modal_active.store(false, Ordering::SeqCst);
-                println!("\n🔙 [fckmouse] Mouse Mode EXITED.\n");
+                println!("\n🔙 [fckmouse] Mouse Mode EXITED. Returned to standard typing.\n");
                 return Ok(());
             }
             if self.config.modal.left_click.matches(key) {
@@ -214,6 +196,7 @@ impl KeyboardController {
                 self.mouse.click(MouseButton::Middle)?;
                 return Ok(());
             }
+            // Immediate response on key press for responsive single taps
             if self.config.modal.scroll_up.matches(key) {
                 self.mouse.scroll_vertical(self.config.modal.scroll_speed)?;
                 return Ok(());
@@ -222,18 +205,25 @@ impl KeyboardController {
                 self.mouse.scroll_vertical(-self.config.modal.scroll_speed)?;
                 return Ok(());
             }
+            if self.config.modal.scroll_left.matches(key) {
+                self.mouse.scroll_horizontal(-self.config.modal.scroll_speed)?;
+                return Ok(());
+            }
+            if self.config.modal.scroll_right.matches(key) {
+                self.mouse.scroll_horizontal(self.config.modal.scroll_speed)?;
+                return Ok(());
+            }
         }
 
         Ok(())
     }
 
-    /// Calculates current desired direction vector based on active mode & keys.
+    /// Calculates current desired direction vector based on active keys in Mouse Mode.
     pub fn calculate_direction(&self) -> (i32, i32) {
         let mut dir_x = 0;
         let mut dir_y = 0;
 
-        let is_modal = self.modal_active.load(Ordering::SeqCst);
-        let is_chord = self.chord_modifiers_active();
+        let is_modal = self.modal_active.load(Ordering::SeqCst) || self.pending_grab;
 
         if is_modal {
             if self.config.modal.move_left.is_any_pressed(&self.pressed_keys) {
@@ -248,49 +238,89 @@ impl KeyboardController {
             if self.config.modal.move_down.is_any_pressed(&self.pressed_keys) {
                 dir_y += 1;
             }
-        } else if is_chord {
-            if self.config.chord.move_left.is_any_pressed(&self.pressed_keys) {
-                dir_x -= 1;
-            }
-            if self.config.chord.move_right.is_any_pressed(&self.pressed_keys) {
-                dir_x += 1;
-            }
-            if self.config.chord.move_up.is_any_pressed(&self.pressed_keys) {
-                dir_y -= 1;
-            }
-            if self.config.chord.move_down.is_any_pressed(&self.pressed_keys) {
-                dir_y += 1;
-            }
         }
 
         (dir_x, dir_y)
     }
 
-    /// Tick update loop: applies acceleration curve and moves the mouse.
+    /// Calculates 2D scroll request (sx, sy) based on pressed keys in Mouse Mode.
+    pub fn calculate_scroll(&self) -> (i32, i32) {
+        let mut sx = 0;
+        let mut sy = 0;
+
+        let is_modal = self.modal_active.load(Ordering::SeqCst) || self.pending_grab;
+
+        if is_modal {
+            if self.config.modal.scroll_up.is_any_pressed(&self.pressed_keys) {
+                sy += 1;
+            }
+            if self.config.modal.scroll_down.is_any_pressed(&self.pressed_keys) {
+                sy -= 1;
+            }
+            if self.config.modal.scroll_left.is_any_pressed(&self.pressed_keys) {
+                sx -= 1;
+            }
+            if self.config.modal.scroll_right.is_any_pressed(&self.pressed_keys) {
+                sx += 1;
+            }
+        }
+
+        (sx, sy)
+    }
+
+    /// Tick update loop: applies acceleration curve, continuous 2D scrolling, and handles clean grab.
     pub fn tick(&mut self) -> Result<()> {
+        // 1. Process clean grab transition
+        if self.pending_grab {
+            let elapsed_ms = self
+                .pending_grab_start
+                .map(|t| t.elapsed().as_millis())
+                .unwrap_or(0);
+
+            // Once toggle modifiers are released, or after 350ms safety timeout:
+            if !self.is_toggle_chord_active() || elapsed_ms > 350 {
+                self.pending_grab = false;
+                self.pending_grab_start = None;
+                self.modal_active.store(true, Ordering::SeqCst);
+                info!("Clean grab transition complete (modifiers released). Mouse Mode active.");
+                println!("🔒 [fckmouse] Keyboard exclusively grabbed (zero modifier leakage).");
+            }
+        }
+
+        let is_modal = self.modal_active.load(Ordering::SeqCst) || self.pending_grab;
+        if !is_modal {
+            return Ok(());
+        }
+
+        let turbo = self.config.modal.turbo.is_any_pressed(&self.pressed_keys);
+        let precision = self.config.modal.precision.is_any_pressed(&self.pressed_keys);
+
+        // 2. Cursor movement
         let (dir_x, dir_y) = self.calculate_direction();
-
-        let is_modal = self.modal_active.load(Ordering::SeqCst);
-        let is_chord = self.chord_modifiers_active();
-
-        let turbo = if is_modal {
-            self.config.modal.turbo.is_any_pressed(&self.pressed_keys)
-        } else if is_chord {
-            self.config.chord.turbo.is_any_pressed(&self.pressed_keys)
-        } else {
-            false
-        };
-
-        let precision = if is_modal {
-            self.config.modal.precision.is_any_pressed(&self.pressed_keys)
-        } else {
-            false
-        };
-
         let (dx, dy) = self.physics.step(dir_x, dir_y, turbo, precision);
 
         if dx != 0 || dy != 0 {
             self.mouse.move_relative(dx, dy)?;
+        }
+
+        // 3. Continuous 2D scrolling
+        let (sx, sy) = self.calculate_scroll();
+        if sx != 0 || sy != 0 {
+            self.scroll_tick_counter += 1;
+            let interval = if turbo { 2 } else if precision { 8 } else { 4 };
+            if self.scroll_tick_counter >= interval {
+                self.scroll_tick_counter = 0;
+                let base_speed = self.config.modal.scroll_speed;
+                let mult = if turbo { 2 } else { 1 };
+                if sy != 0 {
+                    self.mouse.scroll_vertical(sy * base_speed * mult)?;
+                }
+                if sx != 0 {
+                    self.mouse.scroll_horizontal(sx * base_speed * mult)?;
+                }
+            }
+        } else {
+            self.scroll_tick_counter = 0;
         }
 
         Ok(())
@@ -321,10 +351,11 @@ pub fn run_event_loop(config: AppConfig, running: Arc<AtomicBool>) -> Result<()>
 
     info!("fckmouse daemon is running. Press Ctrl+C to terminate.");
     println!("🚀 fckmouse daemon started successfully!");
-    println!("👉 Instant Chord: Hold Alt + Shift + Arrow (or WASD) to move cursor");
-    println!("👉 Instant Clicks: Hold Alt + Shift + Space (Left Click), C (Right Click), V (Middle Click)");
-    println!("👉 Turbo Speed:   Hold Ctrl + Alt + Shift + Arrow for 3x speed");
-    println!("👉 Modal Mode:    Press Alt + Shift + M for exclusive Mouse Mode (prevents typing in apps!)\n");
+    println!("👉 Toggle Mouse Mode: Press Alt + Shift + M (Exclusive keyboard lock)");
+    println!("👉 Left Hand:         WASD moves cursor, Space clicks, C right click, V middle click");
+    println!("👉 Right Hand:        Arrows for 2D scrolling, PageUp/PageDown for page scroll");
+    println!("👉 Multipliers:       Hold Ctrl for Turbo (3x), Shift for Precision (0.3x)");
+    println!("👉 Exit Mouse Mode:   Press Esc or Alt + Shift + M\n");
 
     let mut tick_counter: u64 = 0;
 
@@ -454,4 +485,101 @@ fn listen_keyboard_worker(
     }
 
     let _ = device.ungrab();
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_toggle_chord_detection() {
+        let config = AppConfig::default();
+        let modal_active = Arc::new(AtomicBool::new(false));
+        if let Ok(mut controller) = KeyboardController::new(config, modal_active) {
+            assert!(!controller.is_toggle_chord_active());
+
+            // Press Alt
+            controller.pressed_keys.insert(KeyCode::KEY_LEFTALT.code());
+            assert!(!controller.is_toggle_chord_active());
+
+            // Press Shift
+            controller.pressed_keys.insert(KeyCode::KEY_LEFTSHIFT.code());
+            assert!(controller.is_toggle_chord_active());
+
+            // Release Shift
+            controller.pressed_keys.remove(&KeyCode::KEY_LEFTSHIFT.code());
+            assert!(!controller.is_toggle_chord_active());
+        }
+    }
+
+    #[test]
+    fn test_wasd_direction_calculation() {
+        let config = AppConfig::default();
+        let modal_active = Arc::new(AtomicBool::new(true));
+        if let Ok(mut controller) = KeyboardController::new(config, modal_active) {
+            // W -> Up (dy = -1)
+            controller.pressed_keys.insert(KeyCode::KEY_W.code());
+            assert_eq!(controller.calculate_direction(), (0, -1));
+
+            // W + D -> Up-Right (dx = 1, dy = -1)
+            controller.pressed_keys.insert(KeyCode::KEY_D.code());
+            assert_eq!(controller.calculate_direction(), (1, -1));
+
+            controller.pressed_keys.clear();
+
+            // A -> Left (dx = -1)
+            controller.pressed_keys.insert(KeyCode::KEY_A.code());
+            assert_eq!(controller.calculate_direction(), (-1, 0));
+
+            // S -> Down (dy = 1)
+            controller.pressed_keys.clear();
+            controller.pressed_keys.insert(KeyCode::KEY_S.code());
+            assert_eq!(controller.calculate_direction(), (0, 1));
+        }
+    }
+
+    #[test]
+    fn test_arrow_keys_2d_scroll_calculation() {
+        let config = AppConfig::default();
+        let modal_active = Arc::new(AtomicBool::new(true));
+        if let Ok(mut controller) = KeyboardController::new(config, modal_active) {
+            // Arrow Up -> sy = +1
+            controller.pressed_keys.insert(KeyCode::KEY_UP.code());
+            assert_eq!(controller.calculate_scroll(), (0, 1));
+
+            // Arrow Down -> sy = -1
+            controller.pressed_keys.clear();
+            controller.pressed_keys.insert(KeyCode::KEY_DOWN.code());
+            assert_eq!(controller.calculate_scroll(), (0, -1));
+
+            // Arrow Left -> sx = -1
+            controller.pressed_keys.clear();
+            controller.pressed_keys.insert(KeyCode::KEY_LEFT.code());
+            assert_eq!(controller.calculate_scroll(), (-1, 0));
+
+            // Arrow Right -> sx = +1
+            controller.pressed_keys.clear();
+            controller.pressed_keys.insert(KeyCode::KEY_RIGHT.code());
+            assert_eq!(controller.calculate_scroll(), (1, 0));
+
+            // PageUp -> sy = +1
+            controller.pressed_keys.clear();
+            controller.pressed_keys.insert(KeyCode::KEY_PAGEUP.code());
+            assert_eq!(controller.calculate_scroll(), (0, 1));
+
+            // PageDown -> sy = -1
+            controller.pressed_keys.clear();
+            controller.pressed_keys.insert(KeyCode::KEY_PAGEDOWN.code());
+            assert_eq!(controller.calculate_scroll(), (0, -1));
+
+            // Comma (scroll up) and Dot (scroll down)
+            controller.pressed_keys.clear();
+            controller.pressed_keys.insert(KeyCode::KEY_COMMA.code());
+            assert_eq!(controller.calculate_scroll(), (0, 1));
+
+            controller.pressed_keys.clear();
+            controller.pressed_keys.insert(KeyCode::KEY_DOT.code());
+            assert_eq!(controller.calculate_scroll(), (0, -1));
+        }
+    }
 }

@@ -1,56 +1,37 @@
 # fckmouse configuration file
 # Place this at ~/.config/fckmouse/config.toml
 
-[chord]
-# Instant on-the-fly cursor movement and clicking using key chords.
-# No mode-switching needed!
-enabled = true
-
-# Modifiers required to initiate chord cursor actions.
-# You can use any combination, e.g.: ["alt", "shift"], ["super", "alt"], ["ctrl", "alt"], etc.
-modifiers = ["alt", "shift"]
-
-# Direction keys recognized when holding the modifiers:
-move_left = ["left", "a"]
-move_right = ["right", "d"]
-move_up = ["up", "w"]
-move_down = ["down", "s"]
-
-# Clicks and scrolls recognized when holding the chord modifiers:
-left_click = "space"
-right_click = "c"
-middle_click = "v"
-scroll_up = "r"
-scroll_down = "f"
-
-# Speed multiplier key when holding chord:
-turbo = "ctrl"
-
-
 [modal]
-# Vim-style Mouse Mode.
-# In Mouse Mode, single keys control the mouse without holding modifiers.
-# Keyboard is exclusively locked (EVIOCGRAB) so no letters leak or type into open apps!
+# Mouse Mode.
+# Single keys control the mouse exclusively without holding modifiers.
+# The keyboard is exclusively locked (EVIOCGRAB) so letters never type into open apps!
 enabled = true
 
-# Key to toggle Mouse Mode (when chord modifiers are held):
+# Modifiers required to toggle Mouse Mode:
+toggle_modifiers = ["alt", "shift"]
+
+# Key to toggle Mouse Mode (when toggle modifiers are pressed):
 toggle = "m"
 
 # Key to exit Mouse Mode back to normal typing:
 exit = "esc"
 
-# Direction keys in Mouse Mode (arrows, WASD, and HJKL):
-move_left = ["left", "a", "h"]
-move_right = ["right", "d", "l"]
-move_up = ["up", "w", "k"]
-move_down = ["down", "s", "j"]
+# Direction keys in Mouse Mode (Left Hand: WASD and HJKL):
+move_left = ["a", "h"]
+move_right = ["d", "l"]
+move_up = ["w", "k"]
+move_down = ["s", "j"]
 
 # Actions in Mouse Mode:
 left_click = "space"
 right_click = "c"
 middle_click = "v"
-scroll_up = "r"
-scroll_down = "f"
+
+# 2D Scrolling Engine (Right Hand: Arrow Keys, PageUp/PageDown, Comma/Dot):
+scroll_up = ["up", "pageup", ",", "r"]
+scroll_down = ["down", "pagedown", ".", "f"]
+scroll_left = "left"
+scroll_right = "right"
 
 # Modifiers inside Mouse Mode:
 precision = "shift"    # Hold for 0.3x slow precision crawl

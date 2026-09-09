@@ -6,7 +6,7 @@ use std::path::PathBuf;
 #[command(
     name = "fckmouse",
     author = "usoy",
-    version = "0.1.0",
+    version = "0.2.0",
     about = "Zero-latency, keyboard-driven mouse navigation daemon for Linux tiling window managers."
 )]
 pub struct Cli {

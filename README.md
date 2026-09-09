@@ -14,7 +14,7 @@
 
 ## 📖 Overview
 
-`fckmouse` creates a Linux kernel-level virtual mouse device (`/dev/uinput`) that translates keyboard chords and modal keystrokes into fluid, pixel-perfect cursor movement, clicking, and scrolling.
+`fckmouse` creates a Linux kernel-level virtual mouse device (`/dev/uinput`) that translates modal keystrokes into fluid, pixel-perfect cursor movement, clean clicking, and full 2D scrolling.
 
 It works in **all desktop environments** (GNOME, KDE, XFCE, etc.), **all Wayland compositors** (niri, Sway, Hyprland), and **X11** on **any Linux distribution** — except non-Linux OSes (macOS/Windows).
 
@@ -27,8 +27,10 @@ It works in **all desktop environments** (GNOME, KDE, XFCE, etc.), **all Wayland
 
 ## ✨ Features
 
-- ⚡ **Zero-Latency Virtual Mouse (`/dev/uinput`)**: Emits hardware-level relative events (`REL_X`, `REL_Y`, `REL_WHEEL`) and button events (`BTN_LEFT`, `BTN_RIGHT`, `BTN_MIDDLE`).
+- ⚡ **Zero-Latency Virtual Mouse (`/dev/uinput`)**: Emits hardware-level relative events (`REL_X`, `REL_Y`, `REL_WHEEL`, `REL_HWHEEL`) and button events (`BTN_LEFT`, `BTN_RIGHT`, `BTN_MIDDLE`).
 - 🔒 **Exclusive Keyboard Grabbing**: When entering Mouse Mode, `fckmouse` grabs the keyboard via kernel `EVIOCGRAB`. Keystrokes control the mouse and **never leak or type into your open documents or browser**.
+- 🛡️ **Clean Grab Transition**: Waits for activation keys (`Alt`, `Shift`) to release before locking the device, ensuring the compositor receives key-up events and completely preventing stuck `Shift` / duplicate window link clicks.
+- 🧭 **2D Scrolling Engine**: Smooth vertical and horizontal scrolling mapped to Arrow keys (`Up`/`Down` and `Left`/`Right`) plus `PageUp`/`PageDown`, completely avoiding browser shortcut conflicts (like Brave's Read Aloud player).
 - 📈 **Progressive Acceleration Curve**: Single-pixel crawl ($1\text{–}2.5\text{px}$) on quick taps for clicking tiny links; smooth quadratic acceleration ramping up to $28\text{px/tick}$ on sustained hold.
 - 🚀 **Turbo & Precision Multipliers**: Hold `Ctrl` for instant $3\times$ speed across multi-monitor setups, or `Shift` for $0.3\times$ precision crawl.
 - 🪟 **Desktop & CLI Shortcuts**: Supports instant one-shot subcommands (`fckmouse move`, `fckmouse click`, `fckmouse scroll`) bindable to desktop or window manager hotkeys.
@@ -39,41 +41,24 @@ It works in **all desktop environments** (GNOME, KDE, XFCE, etc.), **all Wayland
 
 ## 🎮 How to Use (Cheat Sheet)
 
-You have **two ways** to control your cursor:
-
-### Method 1: Instant Chords (No Mode Switching)
-Move, click, and scroll on-the-fly while typing without entering any mode.
-
-| Key Combination | Action | Description |
-| :--- | :--- | :--- |
-| **`Alt + Shift + Arrows`** | **Move Cursor** | Glides cursor with acceleration curve |
-| **`Alt + Shift + WASD`** | **Move Cursor** | Left-hand ergonomic movement |
-| **`Ctrl + Alt + Shift + Arrows`** | **Turbo Move** | $3\times$ speed boost to jump across displays |
-| **`Alt + Shift + Space`** | **Left Click** | Standard left mouse click |
-| **`Alt + Shift + C`** | **Right Click** | Context menu / right click |
-| **`Alt + Shift + V`** | **Middle Click** | Open link in new tab / paste clipboard |
-| **`Alt + Shift + R`** | **Scroll Up** | Scroll wheel up |
-| **`Alt + Shift + F`** | **Scroll Down** | Scroll wheel down |
-
----
-
-### Method 2: Modal Mouse Mode (Exclusive Full Mouse Lock)
-For extended mouse navigation and web browsing without holding down multi-key chords.
+`fckmouse` uses **Modal Mouse Mode** with an exclusive Linux kernel keyboard lock (`EVIOCGRAB`). When active, keystrokes exclusively control the mouse without leaking letters into open documents, triggering browser shortcuts, or holding down sticky modifiers.
 
 1. Press **`Alt + Shift + M`** to toggle **Mouse Mode**.
-2. The keyboard is exclusively locked for mouse control (**no letters will type into applications**):
+2. Control cursor gliding, clicking, and 2D scrolling effortlessly:
 
-| Key | Action | Description |
-| :--- | :--- | :--- |
-| **`Arrows` / `WASD` / `HJKL`** | **Move Cursor** | Smooth acceleration (supports diagonal motion) |
-| **`Space`** | **Left Click** | Standard left mouse click |
-| **`C`** | **Right Click** | Context menu / right click |
-| **`V`** | **Middle Click** | Open links in new tab / terminal paste |
-| **`R`** | **Scroll Up** | Wheel scroll up |
-| **`F`** | **Scroll Down** | Wheel scroll down |
-| **`Shift` (Hold)** | **Precision Crawl** | $0.3\times$ slow-motion speed for pixel-perfect targeting |
-| **`Ctrl` (Hold)** | **Turbo Boost** | $3\times$ speed boost across multiple monitors |
-| **`Esc`** or **`Alt + Shift + M`** | **Exit Mouse Mode** | Releases keyboard grab and returns immediately to normal typing |
+| Key(s) | Action | Hand / Group | Description |
+| :--- | :--- | :--- | :--- |
+| **`WASD`** / `HJKL` | **Move Cursor** | Left Hand | Smooth acceleration (supports diagonal motion) |
+| **`Space`** | **Left Click** | Left Hand | Standard clean left click (no duplicate window!) |
+| **`C`** | **Right Click** | Left Hand | Context menu / right click |
+| **`V`** | **Middle Click** | Left Hand | Open links in new tab / terminal paste |
+| **`Shift` (Hold)** | **Precision Crawl** | Left Hand | $0.3\times$ slow-motion speed for pixel-perfect targeting |
+| **`Ctrl` (Hold)** | **Turbo Boost** | Left Hand | $3\times$ speed boost across multiple monitors |
+| **`Up` / `Down`** | **Vertical Scroll** | Right Hand | Wheel scroll up / down (smooth continuous hold) |
+| **`Left` / `Right`** | **Horizontal Scroll** | Right Hand | Horizontal wheel scroll for wide code blocks & sheets |
+| **`PageUp` / `PageDown`** | **Page Scroll** | Right Hand | Fast page-up / page-down scrolling |
+| **`,` / `.`** | **Alternate Scroll** | Right Hand | Alternate scroll up / down keys |
+| **`Esc`** or **`Alt + Shift + M`** | **Exit Mouse Mode** | Either Hand | Releases keyboard grab and returns immediately to normal typing |
 
 ---
 
@@ -133,53 +118,35 @@ fckmouse init-config
 
 ### Full Configuration Reference:
 ```toml
-[chord]
-# Instant on-the-fly cursor movement and clicking using key chords.
-enabled = true
-
-# Modifiers required to initiate chord cursor actions.
-# Customize with any modifier combination: ["alt", "shift"], ["super", "alt"], ["ctrl", "alt"], etc.
-modifiers = ["alt", "shift"]
-
-# Direction keys recognized when holding the chord modifiers:
-move_left = ["left", "a"]
-move_right = ["right", "d"]
-move_up = ["up", "w"]
-move_down = ["down", "s"]
-
-# Clicks and scrolls recognized when holding chord modifiers:
-left_click = "space"
-right_click = "c"
-middle_click = "v"
-scroll_up = "r"
-scroll_down = "f"
-
-# Speed multiplier key when holding chord:
-turbo = "ctrl"
-
-
 [modal]
-# Vim-style Mouse Mode (exclusive keyboard lock via EVIOCGRAB):
+# Mouse Mode (exclusive keyboard lock via EVIOCGRAB):
 enabled = true
 
-# Key to toggle Mouse Mode (when chord modifiers are held):
+# Modifiers required to toggle Mouse Mode:
+toggle_modifiers = ["alt", "shift"]
+
+# Key to toggle Mouse Mode (when toggle modifiers are held):
 toggle = "m"
 
 # Key to exit Mouse Mode back to normal typing:
 exit = "esc"
 
-# Direction keys in Mouse Mode (e.g. arrows, WASD, and HJKL):
-move_left = ["left", "a", "h"]
-move_right = ["right", "d", "l"]
-move_up = ["up", "w", "k"]
-move_down = ["down", "s", "j"]
+# Direction keys in Mouse Mode (Left Hand: WASD and HJKL):
+move_left = ["a", "h"]
+move_right = ["d", "l"]
+move_up = ["w", "k"]
+move_down = ["s", "j"]
 
 # Actions in Mouse Mode:
 left_click = "space"
 right_click = "c"
 middle_click = "v"
-scroll_up = "r"
-scroll_down = "f"
+
+# 2D Scrolling Engine (Right Hand: Arrow Keys, PageUp/PageDown, Comma/Dot):
+scroll_up = ["up", "pageup", ",", "r"]
+scroll_down = ["down", "pagedown", ".", "f"]
+scroll_left = "left"
+scroll_right = "right"
 
 # Modifiers inside Mouse Mode:
 precision = "shift"    # Hold for 0.3x slow precision crawl

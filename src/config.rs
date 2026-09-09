@@ -63,8 +63,8 @@ pub fn key_matches(key: KeyCode, pattern: &str) -> bool {
         "right" | "arrow_right" => key == KeyCode::KEY_RIGHT,
         "up" | "arrow_up" => key == KeyCode::KEY_UP,
         "down" | "arrow_down" => key == KeyCode::KEY_DOWN,
-        "pageup" | "page_up" => key == KeyCode::KEY_PAGEUP,
-        "pagedown" | "page_down" => key == KeyCode::KEY_PAGEDOWN,
+        "pageup" | "page_up" | "pgup" => key == KeyCode::KEY_PAGEUP,
+        "pagedown" | "page_down" | "pgdn" => key == KeyCode::KEY_PAGEDOWN,
         "home" => key == KeyCode::KEY_HOME,
         "end" => key == KeyCode::KEY_END,
         "insert" => key == KeyCode::KEY_INSERT,
@@ -117,8 +117,8 @@ pub fn key_matches(key: KeyCode, pattern: &str) -> bool {
         "f10" => key == KeyCode::KEY_F10,
         "f11" => key == KeyCode::KEY_F11,
         "f12" => key == KeyCode::KEY_F12,
-        "," | "comma" => key == KeyCode::KEY_COMMA,
-        "." | "dot" | "period" => key == KeyCode::KEY_DOT,
+        "," | "comma" | "<" | "less" => key == KeyCode::KEY_COMMA,
+        "." | "dot" | "period" | ">" | "greater" => key == KeyCode::KEY_DOT,
         "/" | "slash" => key == KeyCode::KEY_SLASH,
         ";" | "semicolon" => key == KeyCode::KEY_SEMICOLON,
         "'" | "apostrophe" => key == KeyCode::KEY_APOSTROPHE,
@@ -266,7 +266,11 @@ pub struct ModalConfig {
     #[serde(default = "default_true")]
     pub enabled: bool,
 
-    /// Key that toggles mouse mode when chord modifiers are held (e.g. "m")
+    /// Modifiers required to toggle Mouse Mode (e.g. ["alt", "shift"])
+    #[serde(default = "default_toggle_modifiers")]
+    pub toggle_modifiers: Vec<String>,
+
+    /// Key that toggles mouse mode when toggle modifiers are held (e.g. "m")
     #[serde(default = "default_modal_toggle")]
     pub toggle: KeyList,
 
@@ -295,11 +299,17 @@ pub struct ModalConfig {
     #[serde(default = "default_middle_click")]
     pub middle_click: KeyList,
 
-    #[serde(default = "default_scroll_up")]
+    #[serde(default = "default_modal_scroll_up")]
     pub scroll_up: KeyList,
 
-    #[serde(default = "default_scroll_down")]
+    #[serde(default = "default_modal_scroll_down")]
     pub scroll_down: KeyList,
+
+    #[serde(default = "default_modal_scroll_left")]
+    pub scroll_left: KeyList,
+
+    #[serde(default = "default_modal_scroll_right")]
+    pub scroll_right: KeyList,
 
     #[serde(default = "default_precision_key")]
     pub precision: KeyList,
@@ -311,6 +321,9 @@ pub struct ModalConfig {
     pub scroll_speed: i32,
 }
 
+fn default_toggle_modifiers() -> Vec<String> {
+    vec!["alt".to_string(), "shift".to_string()]
+}
 fn default_modal_toggle() -> KeyList {
     KeyList::single("m")
 }
@@ -318,16 +331,28 @@ fn default_modal_exit() -> KeyList {
     KeyList::single("esc")
 }
 fn default_modal_left() -> KeyList {
-    KeyList::multiple(&["left", "a", "h"])
+    KeyList::multiple(&["a", "h"])
 }
 fn default_modal_right() -> KeyList {
-    KeyList::multiple(&["right", "d", "l"])
+    KeyList::multiple(&["d", "l"])
 }
 fn default_modal_up() -> KeyList {
-    KeyList::multiple(&["up", "w", "k"])
+    KeyList::multiple(&["w", "k"])
 }
 fn default_modal_down() -> KeyList {
-    KeyList::multiple(&["down", "s", "j"])
+    KeyList::multiple(&["s", "j"])
+}
+fn default_modal_scroll_up() -> KeyList {
+    KeyList::multiple(&["up", "pageup", ",", "r"])
+}
+fn default_modal_scroll_down() -> KeyList {
+    KeyList::multiple(&["down", "pagedown", ".", "f"])
+}
+fn default_modal_scroll_left() -> KeyList {
+    KeyList::single("left")
+}
+fn default_modal_scroll_right() -> KeyList {
+    KeyList::single("right")
 }
 fn default_precision_key() -> KeyList {
     KeyList::single("shift")
@@ -340,6 +365,7 @@ impl Default for ModalConfig {
     fn default() -> Self {
         Self {
             enabled: default_true(),
+            toggle_modifiers: default_toggle_modifiers(),
             toggle: default_modal_toggle(),
             exit: default_modal_exit(),
             move_left: default_modal_left(),
@@ -349,8 +375,10 @@ impl Default for ModalConfig {
             left_click: default_left_click(),
             right_click: default_right_click(),
             middle_click: default_middle_click(),
-            scroll_up: default_scroll_up(),
-            scroll_down: default_scroll_down(),
+            scroll_up: default_modal_scroll_up(),
+            scroll_down: default_modal_scroll_down(),
+            scroll_left: default_modal_scroll_left(),
+            scroll_right: default_modal_scroll_right(),
             precision: default_precision_key(),
             turbo: default_turbo_key(),
             scroll_speed: default_scroll_speed(),
@@ -362,7 +390,7 @@ impl Default for ModalConfig {
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct AppConfig {
     #[serde(default)]
-    pub chord: ChordConfig,
+    pub chord: Option<ChordConfig>,
 
     #[serde(default)]
     pub modal: ModalConfig,
@@ -407,56 +435,37 @@ impl AppConfig {
         r#"# fckmouse configuration file
 # Place this at ~/.config/fckmouse/config.toml
 
-[chord]
-# Instant on-the-fly cursor movement and clicking using key chords.
-# No mode-switching needed!
-enabled = true
-
-# Modifiers required to initiate chord cursor actions.
-# You can use any combination, e.g.: ["alt", "shift"], ["super", "alt"], ["ctrl", "alt"], etc.
-modifiers = ["alt", "shift"]
-
-# Direction keys recognized when holding the modifiers:
-move_left = ["left", "a"]
-move_right = ["right", "d"]
-move_up = ["up", "w"]
-move_down = ["down", "s"]
-
-# Clicks and scrolls recognized when holding the chord modifiers:
-left_click = "space"
-right_click = "c"
-middle_click = "v"
-scroll_up = "r"
-scroll_down = "f"
-
-# Speed multiplier key when holding chord:
-turbo = "ctrl"
-
-
 [modal]
-# Vim-style Mouse Mode.
-# In Mouse Mode, single keys control the mouse without holding modifiers.
-# Keyboard is exclusively locked (EVIOCGRAB) so no letters leak or type into open apps!
+# Mouse Mode.
+# Single keys control the mouse exclusively without holding modifiers.
+# The keyboard is exclusively locked (EVIOCGRAB) so letters never type into open apps!
 enabled = true
 
-# Key to toggle Mouse Mode (when chord modifiers are held):
+# Modifiers required to toggle Mouse Mode:
+toggle_modifiers = ["alt", "shift"]
+
+# Key to toggle Mouse Mode (when toggle modifiers are pressed):
 toggle = "m"
 
 # Key to exit Mouse Mode back to normal typing:
 exit = "esc"
 
-# Direction keys in Mouse Mode (arrows, WASD, and HJKL):
-move_left = ["left", "a", "h"]
-move_right = ["right", "d", "l"]
-move_up = ["up", "w", "k"]
-move_down = ["down", "s", "j"]
+# Direction keys in Mouse Mode (Left Hand: WASD and HJKL):
+move_left = ["a", "h"]
+move_right = ["d", "l"]
+move_up = ["w", "k"]
+move_down = ["s", "j"]
 
 # Actions in Mouse Mode:
 left_click = "space"
 right_click = "c"
 middle_click = "v"
-scroll_up = "r"
-scroll_down = "f"
+
+# 2D Scrolling Engine (Right Hand: Arrow Keys, PageUp/PageDown, Comma/Dot):
+scroll_up = ["up", "pageup", ",", "r"]
+scroll_down = ["down", "pagedown", ".", "f"]
+scroll_left = "left"
+scroll_right = "right"
 
 # Modifiers inside Mouse Mode:
 precision = "shift"    # Hold for 0.3x slow precision crawl
@@ -490,6 +499,10 @@ mod tests {
         assert!(key_matches(KeyCode::KEY_LEFTMETA, "super"));
         assert!(key_matches(KeyCode::KEY_A, "a"));
         assert!(key_matches(KeyCode::KEY_H, "h"));
+        assert!(key_matches(KeyCode::KEY_COMMA, "<"));
+        assert!(key_matches(KeyCode::KEY_DOT, ">"));
+        assert!(key_matches(KeyCode::KEY_PAGEUP, "pgup"));
+        assert!(key_matches(KeyCode::KEY_PAGEDOWN, "pgdn"));
     }
 
     #[test]
@@ -498,8 +511,7 @@ mod tests {
         assert!(single.matches(KeyCode::KEY_SPACE));
         assert!(!single.matches(KeyCode::KEY_A));
 
-        let multiple = KeyList::multiple(&["left", "a", "h"]);
-        assert!(multiple.matches(KeyCode::KEY_LEFT));
+        let multiple = KeyList::multiple(&["a", "h"]);
         assert!(multiple.matches(KeyCode::KEY_A));
         assert!(multiple.matches(KeyCode::KEY_H));
         assert!(!multiple.matches(KeyCode::KEY_D));
@@ -508,22 +520,9 @@ mod tests {
     #[test]
     fn test_custom_toml_deserialization() {
         let toml_str = r#"
-        [chord]
-        enabled = true
-        modifiers = ["super", "alt"]
-        move_left = "left"
-        move_right = "right"
-        move_up = "up"
-        move_down = "down"
-        left_click = "space"
-        right_click = "c"
-        middle_click = "v"
-        scroll_up = "r"
-        scroll_down = "f"
-        turbo = "ctrl"
-
         [modal]
         enabled = true
+        toggle_modifiers = ["super", "alt"]
         toggle = "grave"
         exit = "tab"
         move_left = ["a", "h"]
@@ -533,19 +532,22 @@ mod tests {
         left_click = "enter"
         right_click = "m"
         middle_click = "n"
-        scroll_up = "u"
-        scroll_down = "d"
+        scroll_up = ["up", "pgup"]
+        scroll_down = ["down", "pgdn"]
+        scroll_left = "left"
+        scroll_right = "right"
         precision = "shift"
         turbo = "ctrl"
         scroll_speed = 2
         "#;
 
         let config: AppConfig = toml::from_str(toml_str).unwrap();
-        assert_eq!(config.chord.modifiers, vec!["super", "alt"]);
-        assert!(config.chord.move_left.matches(KeyCode::KEY_LEFT));
+        assert_eq!(config.modal.toggle_modifiers, vec!["super", "alt"]);
         assert!(config.modal.toggle.matches(KeyCode::KEY_GRAVE));
         assert!(config.modal.exit.matches(KeyCode::KEY_TAB));
         assert!(config.modal.left_click.matches(KeyCode::KEY_ENTER));
+        assert!(config.modal.scroll_up.matches(KeyCode::KEY_PAGEUP));
+        assert!(config.modal.scroll_left.matches(KeyCode::KEY_LEFT));
         assert_eq!(config.modal.scroll_speed, 2);
     }
 }
