@@ -28,6 +28,7 @@ It works natively across all **Wayland compositors** ([niri](https://github.com/
 - 📈 **Progressive Acceleration Curve**: Single-pixel crawl ($1\text{–}2.5\text{px}$) on quick taps for clicking tiny links; smooth quadratic acceleration ramping up to $28\text{px/tick}$ on sustained hold.
 - 🚀 **Turbo & Precision Multipliers**: Hold `Ctrl` for instant $3\times$ speed across multi-monitor setups, or `Shift` for $0.3\times$ precision crawl.
 - 🪟 **Window Manager CLI**: Supports instant one-shot subcommands (`fckmouse move`, `fckmouse click`, `fckmouse scroll`) directly bindable in window manager configs.
+- 🔌 **Dynamic USB Hotplug & Multi-Device**: Automatically detects when keyboards are plugged, unplugged, or re-enumerated when connecting/disconnecting external USB devices without restarting the daemon.
 - 🩺 **Built-in Doctor (`fckmouse doctor`)**: Instant diagnostics of `/dev/uinput`, `/dev/input/event*`, and user group permissions.
 
 ---

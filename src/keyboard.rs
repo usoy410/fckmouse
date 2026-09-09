@@ -3,7 +3,7 @@ use crate::physics::MovementPhysics;
 use crate::uinput::{MouseButton, MouseDevice};
 use anyhow::{Context, Result};
 use evdev::{Device, EventType, KeyCode};
-use log::{debug, error, info, warn};
+use log::{debug, info, warn};
 use std::collections::HashSet;
 use std::fs;
 use std::path::PathBuf;
@@ -44,25 +44,25 @@ pub fn discover_keyboards() -> Result<Vec<PathBuf>> {
 
     for entry in entries.flatten() {
         let path = entry.path();
-        if let Some(file_name) = path.file_name().and_then(|n| n.to_str()) {
-            if file_name.starts_with("event") {
-                match Device::open(&path) {
-                    Ok(device) => {
-                        if is_keyboard_device(&device) {
-                            info!(
-                                "Detected keyboard: {:?} ({})",
-                                path,
-                                device.name().unwrap_or("Unknown")
-                            );
-                            keyboards.push(path);
-                        }
+        if let Some(file_name) = path.file_name().and_then(|n| n.to_str())
+            && file_name.starts_with("event")
+        {
+            match Device::open(&path) {
+                Ok(device) => {
+                    if is_keyboard_device(&device) {
+                        debug!(
+                            "Detected keyboard: {:?} ({})",
+                            path,
+                            device.name().unwrap_or("Unknown")
+                        );
+                        keyboards.push(path);
                     }
-                    Err(e) => {
-                        if e.kind() == std::io::ErrorKind::PermissionDenied {
-                            permission_denied_count += 1;
-                        }
-                        debug!("Skipping device {:?}: {}", path, e);
+                }
+                Err(e) => {
+                    if e.kind() == std::io::ErrorKind::PermissionDenied {
+                        permission_denied_count += 1;
                     }
+                    debug!("Skipping device {:?}: {}", path, e);
                 }
             }
         }
@@ -302,35 +302,19 @@ impl KeyboardController {
     }
 }
 
+/// Internal event sent from keyboard workers to the central daemon.
+#[derive(Debug, Clone)]
+pub enum DaemonEvent {
+    Key(RawKeyEvent),
+    Disconnected(PathBuf),
+}
+
 /// Spawns background listener threads for each keyboard and runs the central controller loop.
+/// Dynamically detects newly connected or re-enumerated USB keyboards.
 pub fn run_event_loop(config: AppConfig, running: Arc<AtomicBool>) -> Result<()> {
-    let keyboards = discover_keyboards()?;
-    if keyboards.is_empty() {
-        return Err(anyhow::anyhow!(
-            "No accessible keyboard devices found in /dev/input/.\n\
-            Ensure your user belongs to the 'input' group:\n\
-                sudo usermod -aG input $USER\n\
-            Then log out and log back in (or run 'newgrp input')."
-        ));
-    }
-
     let modal_active = Arc::new(AtomicBool::new(false));
-    let (tx, rx): (Sender<RawKeyEvent>, Receiver<RawKeyEvent>) = channel();
-
-    // Spawn a listener thread for each detected keyboard device
-    for path in keyboards {
-        let tx_clone = tx.clone();
-        let running_clone = running.clone();
-        let modal_clone = modal_active.clone();
-        let path_clone = path.clone();
-
-        thread::Builder::new()
-            .name(format!("kbd-{:?}", path.file_name()))
-            .spawn(move || {
-                listen_keyboard_worker(path_clone, tx_clone, running_clone, modal_clone);
-            })
-            .context("Failed to spawn keyboard listener thread")?;
-    }
+    let (tx, rx): (Sender<DaemonEvent>, Receiver<DaemonEvent>) = channel();
+    let mut active_keyboards: HashSet<PathBuf> = HashSet::new();
 
     let mut controller = KeyboardController::new(config, modal_active.clone())?;
     let tick_dur = controller.tick_interval();
@@ -342,11 +326,44 @@ pub fn run_event_loop(config: AppConfig, running: Arc<AtomicBool>) -> Result<()>
     println!("👉 Turbo Speed:   Hold Ctrl + Alt + Shift + Arrow for 3x speed");
     println!("👉 Modal Mode:    Press Alt + Shift + M for exclusive Mouse Mode (prevents typing in apps!)\n");
 
+    let mut tick_counter: u64 = 0;
+
     while running.load(Ordering::SeqCst) {
-        // Drain all pending keyboard events from workers
+        // Periodic rescan for newly connected keyboards or USB re-enumeration (every 100 ticks = ~1 second)
+        if (tick_counter.is_multiple_of(100) || active_keyboards.is_empty())
+            && let Ok(discovered) = discover_keyboards()
+        {
+            for path in discovered {
+                if !active_keyboards.contains(&path) {
+                    info!("Hotplugged keyboard listener for: {:?}", path);
+                    active_keyboards.insert(path.clone());
+                    let tx_clone = tx.clone();
+                    let running_clone = running.clone();
+                    let modal_clone = modal_active.clone();
+                    let path_clone = path.clone();
+
+                    let _ = thread::Builder::new()
+                        .name(format!("kbd-{:?}", path.file_name()))
+                        .spawn(move || {
+                            listen_keyboard_worker(path_clone, tx_clone, running_clone, modal_clone);
+                        });
+                }
+            }
+        }
+        tick_counter = tick_counter.wrapping_add(1);
+
+        // Drain all pending events from workers
         while let Ok(event) = rx.try_recv() {
-            if let Err(e) = controller.handle_key(event) {
-                warn!("Error handling key event: {:?}", e);
+            match event {
+                DaemonEvent::Key(raw_key) => {
+                    if let Err(e) = controller.handle_key(raw_key) {
+                        warn!("Error handling key event: {:?}", e);
+                    }
+                }
+                DaemonEvent::Disconnected(path) => {
+                    active_keyboards.remove(&path);
+                    info!("Keyboard removed from active set: {:?}", path);
+                }
             }
         }
 
@@ -368,14 +385,15 @@ pub fn run_event_loop(config: AppConfig, running: Arc<AtomicBool>) -> Result<()>
 
 fn listen_keyboard_worker(
     path: PathBuf,
-    tx: Sender<RawKeyEvent>,
+    tx: Sender<DaemonEvent>,
     running: Arc<AtomicBool>,
     modal_active: Arc<AtomicBool>,
 ) {
     let mut device = match Device::open(&path) {
         Ok(dev) => dev,
         Err(e) => {
-            error!("Failed to open keyboard device {:?}: {}", path, e);
+            debug!("Failed to open keyboard device {:?}: {}", path, e);
+            let _ = tx.send(DaemonEvent::Disconnected(path));
             return;
         }
     };
@@ -398,6 +416,8 @@ fn listen_keyboard_worker(
         }
 
         let mut receiver_closed = false;
+        let mut disconnected = false;
+
         match device.fetch_events() {
             Ok(events) => {
                 for ev in events {
@@ -406,7 +426,7 @@ fn listen_keyboard_worker(
                             key: KeyCode(ev.code()),
                             value: ev.value(),
                         };
-                        if tx.send(raw).is_err() {
+                        if tx.send(DaemonEvent::Key(raw)).is_err() {
                             receiver_closed = true;
                             break;
                         }
@@ -417,14 +437,18 @@ fn listen_keyboard_worker(
                 if e.kind() == std::io::ErrorKind::WouldBlock {
                     sleep(Duration::from_millis(4));
                 } else {
-                    debug!("Device {:?} fetch_events: {}", path, e);
-                    sleep(Duration::from_millis(50));
+                    // Fatal device error (e.g. ENODEV on unplug/reset)
+                    debug!("Keyboard {:?} disconnected ({})", path, e);
+                    disconnected = true;
                 }
             }
         }
 
-        if receiver_closed {
+        if receiver_closed || disconnected {
             let _ = device.ungrab();
+            if disconnected {
+                let _ = tx.send(DaemonEvent::Disconnected(path));
+            }
             return;
         }
     }
