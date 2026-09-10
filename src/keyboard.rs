@@ -270,20 +270,26 @@ impl KeyboardController {
 
     /// Tick update loop: applies acceleration curve, continuous 2D scrolling, and handles clean grab.
     pub fn tick(&mut self) -> Result<()> {
-        // 1. Process clean grab transition
+        // 1. Process clean grab transition:
+        // Crucial fix: We must ensure ALL toggle keys (Alt, Shift, AND M) are physically released
+        // before calling device.grab(). If the keyboard is grabbed while M is still down, Wayland
+        // will never receive KEY_M release, causing runaway infinite "MMMMMMMM" typing in text boxes!
         if self.pending_grab {
+            let toggle_keys_released = !self.is_toggle_chord_active()
+                && !self.config.modal.toggle.is_any_pressed(&self.pressed_keys);
+
             let elapsed_ms = self
                 .pending_grab_start
                 .map(|t| t.elapsed().as_millis())
                 .unwrap_or(0);
 
-            // Once toggle modifiers are released, or after 350ms safety timeout:
-            if !self.is_toggle_chord_active() || elapsed_ms > 350 {
+            // Once toggle keys (Alt, Shift, M) are verified released, engage exclusive grab:
+            if toggle_keys_released || (elapsed_ms > 750 && self.pressed_keys.is_empty()) {
                 self.pending_grab = false;
                 self.pending_grab_start = None;
                 self.modal_active.store(true, Ordering::SeqCst);
-                info!("Clean grab transition complete (modifiers released). Mouse Mode active.");
-                println!("🔒 [fckmouse] Keyboard exclusively grabbed (zero modifier leakage).");
+                info!("Clean grab transition complete (all toggle keys released). Mouse Mode active.");
+                println!("🔒 [fckmouse] Keyboard exclusively grabbed (zero modifier/key leakage).");
             }
         }
 

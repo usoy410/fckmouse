@@ -46,6 +46,8 @@ impl MouseDevice {
             RelativeAxisCode::REL_Y,
             RelativeAxisCode::REL_WHEEL,
             RelativeAxisCode::REL_HWHEEL,
+            RelativeAxisCode::REL_WHEEL_HI_RES,
+            RelativeAxisCode::REL_HWHEEL_HI_RES,
         ]);
 
         let device = VirtualDevice::builder()
@@ -123,33 +125,50 @@ impl MouseDevice {
 
     /// Emits vertical scroll wheel ticks.
     /// Positive `dy` scrolls up, negative `dy` scrolls down.
+    /// Emits both high-resolution (120 units/detent) and legacy events for full compatibility
+    /// across terminal emulators (e.g. Alacritty), Wayland compositors, and browsers.
     pub fn scroll_vertical(&mut self, dy: i32) -> Result<()> {
         if dy == 0 {
             return Ok(());
         }
-        let event = InputEvent::new_now(
-            EventType::RELATIVE.0,
-            RelativeAxisCode::REL_WHEEL.0,
-            dy,
-        );
+        let events = [
+            InputEvent::new_now(
+                EventType::RELATIVE.0,
+                RelativeAxisCode::REL_WHEEL_HI_RES.0,
+                dy * 120,
+            ),
+            InputEvent::new_now(
+                EventType::RELATIVE.0,
+                RelativeAxisCode::REL_WHEEL.0,
+                dy,
+            ),
+        ];
         self.device
-            .emit(&[event])
+            .emit(&events)
             .context("Failed to emit vertical scroll")?;
         Ok(())
     }
 
     /// Emits horizontal scroll wheel ticks.
+    /// Emits both high-resolution (120 units/detent) and legacy events for full compatibility.
     pub fn scroll_horizontal(&mut self, dx: i32) -> Result<()> {
         if dx == 0 {
             return Ok(());
         }
-        let event = InputEvent::new_now(
-            EventType::RELATIVE.0,
-            RelativeAxisCode::REL_HWHEEL.0,
-            dx,
-        );
+        let events = [
+            InputEvent::new_now(
+                EventType::RELATIVE.0,
+                RelativeAxisCode::REL_HWHEEL_HI_RES.0,
+                dx * 120,
+            ),
+            InputEvent::new_now(
+                EventType::RELATIVE.0,
+                RelativeAxisCode::REL_HWHEEL.0,
+                dx,
+            ),
+        ];
         self.device
-            .emit(&[event])
+            .emit(&events)
             .context("Failed to emit horizontal scroll")?;
         Ok(())
     }
