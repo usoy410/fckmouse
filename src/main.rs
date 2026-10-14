@@ -1,5 +1,6 @@
 mod cli;
 mod config;
+mod grid;
 mod keyboard;
 mod physics;
 mod uinput;
@@ -159,6 +160,11 @@ fn run_doctor() -> Result<()> {
             println!("   ❌ {}", e);
         }
     }
+
+    // 4. Display Screen Resolution & Grid
+    let (res_w, res_h) = grid::CursorTracker::resolve_resolution(0, 0);
+    println!("\n📐 Display Resolution (Grid Snap Target):");
+    println!("   • Active Screen Area: {}x{}", res_w, res_h);
 
     println!("\n✨ Diagnostics complete.\n");
     Ok(())

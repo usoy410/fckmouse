@@ -1,3 +1,4 @@
+use crate::grid::GridConfig;
 use crate::physics::PhysicsConfig;
 use anyhow::{Context, Result};
 use evdev::KeyCode;
@@ -397,6 +398,9 @@ pub struct AppConfig {
 
     #[serde(default)]
     pub physics: PhysicsConfig,
+
+    #[serde(default)]
+    pub grid: GridConfig,
 }
 
 fn default_true() -> bool {
@@ -481,6 +485,19 @@ acceleration = 35.0         # Rate of acceleration per second
 turbo_multiplier = 3.0      # Multiplier when Turbo key is held
 precision_multiplier = 0.3  # Multiplier when Precision key is held
 tick_rate_ms = 10           # Physics update frequency (10ms = 100 Hz)
+
+
+[grid]
+# Grid Snap navigation (snap cursor across screen in 2-3 keystrokes).
+enabled = true
+activate = "g"              # Key inside Mouse Mode to engage Grid Snap
+# Screen resolution: Set to 0 for auto-detection via compositor (niri/xrandr).
+# If auto-detection fails or you use custom scaling, manually set width and height:
+screen_width = 0
+screen_height = 0
+rows = 3                    # Grid rows (3x3 grid)
+cols = 3                    # Grid columns (3x3 grid)
+recursive = true            # Subdivide active cell on consecutive key presses
 "#.to_string()
     }
 }

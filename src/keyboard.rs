@@ -1,4 +1,5 @@
 use crate::config::AppConfig;
+use crate::grid::{key_to_grid_cell, CursorTracker, GridRegion};
 use crate::physics::MovementPhysics;
 use crate::uinput::{MouseButton, MouseDevice};
 use anyhow::{Context, Result};
@@ -94,6 +95,9 @@ pub struct KeyboardController {
     config: AppConfig,
     mouse: MouseDevice,
     physics: MovementPhysics,
+    cursor_tracker: CursorTracker,
+    grid_active: bool,
+    active_grid_region: Option<GridRegion>,
     pressed_keys: HashSet<u16>,
     modal_active: Arc<AtomicBool>,
     pending_grab: bool,
@@ -105,10 +109,14 @@ impl KeyboardController {
     pub fn new(config: AppConfig, modal_active: Arc<AtomicBool>) -> Result<Self> {
         let mouse = MouseDevice::new()?;
         let physics = MovementPhysics::new(config.physics.clone());
+        let cursor_tracker = CursorTracker::new(config.grid.screen_width, config.grid.screen_height);
         Ok(Self {
             config,
             mouse,
             physics,
+            cursor_tracker,
+            grid_active: false,
+            active_grid_region: None,
             pressed_keys: HashSet::new(),
             modal_active,
             pending_grab: false,
@@ -178,12 +186,80 @@ impl KeyboardController {
         // 2. Modal Mouse Mode Actions (When exclusively in Mouse Mode or pending grab)
         if is_modal {
             if self.config.modal.exit.matches(key) {
+                if self.grid_active {
+                    self.grid_active = false;
+                    self.active_grid_region = None;
+                    println!("🎯 [fckmouse] Grid Snap mode deactivated.");
+                    return Ok(());
+                }
                 self.pending_grab = false;
                 self.pending_grab_start = None;
                 self.modal_active.store(false, Ordering::SeqCst);
                 println!("\n🔙 [fckmouse] Mouse Mode EXITED. Returned to standard typing.\n");
                 return Ok(());
             }
+
+            // Grid Snap Mode activation and cell snapping
+            if self.config.grid.enabled {
+                if crate::config::key_matches(key, &self.config.grid.activate) {
+                    if self.grid_active {
+                        self.grid_active = false;
+                        self.active_grid_region = None;
+                        println!("🎯 [fckmouse] Grid Snap mode deactivated.");
+                    } else {
+                        self.grid_active = true;
+                        self.active_grid_region = Some(GridRegion::full(
+                            self.cursor_tracker.screen_width,
+                            self.cursor_tracker.screen_height,
+                        ));
+                        println!(
+                            "🎯 [fckmouse] Grid Snap active! Press QWE/ASD/ZXC or Numpad 1-9 to jump to zone (Esc to cancel)."
+                        );
+                    }
+                    return Ok(());
+                }
+
+                if self.grid_active {
+                    if let Some((row, col)) = key_to_grid_cell(key) {
+                        let current_region = self.active_grid_region.unwrap_or_else(|| {
+                            GridRegion::full(
+                                self.cursor_tracker.screen_width,
+                                self.cursor_tracker.screen_height,
+                            )
+                        });
+
+                        let target_cell = current_region.sub_cell(
+                            row,
+                            col,
+                            self.config.grid.rows,
+                            self.config.grid.cols,
+                        );
+                        let (target_x, target_y) = target_cell.center();
+
+                        let (dx, dy) = self.cursor_tracker.delta_to(target_x, target_y);
+                        if dx != 0 || dy != 0 {
+                            self.mouse.move_relative(dx, dy)?;
+                        }
+
+                        if self.config.grid.recursive {
+                            self.active_grid_region = Some(target_cell);
+                            println!(
+                                "🎯 Jumped to zone [{}, {}] -> ({:.0}, {:.0}). Press next zone to subdivide or move keys to exit.",
+                                row, col, target_x, target_y
+                            );
+                        } else {
+                            self.grid_active = false;
+                            self.active_grid_region = None;
+                        }
+                        return Ok(());
+                    } else {
+                        // Any non-grid key automatically drops grid mode and resumes normal mouse control
+                        self.grid_active = false;
+                        self.active_grid_region = None;
+                    }
+                }
+            }
+
             if self.config.modal.left_click.matches(key) {
                 self.mouse.click(MouseButton::Left)?;
                 return Ok(());
@@ -306,6 +382,12 @@ impl KeyboardController {
         let (dx, dy) = self.physics.step(dir_x, dir_y, turbo, precision);
 
         if dx != 0 || dy != 0 {
+            // Manual cursor movement seamlessly exits active grid snap zone
+            if self.grid_active {
+                self.grid_active = false;
+                self.active_grid_region = None;
+            }
+            self.cursor_tracker.accumulate(dx, dy);
             self.mouse.move_relative(dx, dy)?;
         }
 
@@ -359,6 +441,7 @@ pub fn run_event_loop(config: AppConfig, running: Arc<AtomicBool>) -> Result<()>
     println!("🚀 fckmouse daemon started successfully!");
     println!("👉 Toggle Mouse Mode: Press Alt + Shift + M (Exclusive keyboard lock)");
     println!("👉 Left Hand:         WASD moves cursor, Space clicks, C right click, V middle click");
+    println!("👉 Grid Snap:         Press G in Mouse Mode -> QWE/ASD/ZXC or Numpad 1-9 to snap");
     println!("👉 Right Hand:        Arrows for 2D scrolling, PageUp/PageDown for page scroll");
     println!("👉 Multipliers:       Hold Ctrl for Turbo (3x), Shift for Precision (0.3x)");
     println!("👉 Exit Mouse Mode:   Press Esc or Alt + Shift + M\n");
@@ -588,4 +671,34 @@ mod tests {
             assert_eq!(controller.calculate_scroll(), (0, -1));
         }
     }
+
+    #[test]
+    fn test_grid_snap_state_and_exit() {
+        let config = AppConfig::default();
+        let modal_active = Arc::new(AtomicBool::new(true));
+        if let Ok(mut controller) = KeyboardController::new(config, modal_active.clone()) {
+            assert!(!controller.grid_active);
+
+            // Press 'G' to engage Grid Snap mode
+            let ev_g = RawKeyEvent {
+                key: KeyCode::KEY_G,
+                value: 1,
+            };
+            assert!(controller.handle_key(ev_g).is_ok());
+            assert!(controller.grid_active);
+            assert!(controller.active_grid_region.is_some());
+
+            // Press 'Esc' to exit Grid Snap mode without exiting Mouse Mode
+            let ev_esc = RawKeyEvent {
+                key: KeyCode::KEY_ESC,
+                value: 1,
+            };
+            assert!(controller.handle_key(ev_esc).is_ok());
+            assert!(!controller.grid_active);
+            assert!(controller.active_grid_region.is_none());
+            // Mouse Mode should remain active!
+            assert!(modal_active.load(Ordering::SeqCst));
+        }
+    }
 }
+

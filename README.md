@@ -35,7 +35,8 @@ It works in **all desktop environments** (GNOME, KDE, XFCE, etc.), **all Wayland
 - 🚀 **Turbo & Precision Multipliers**: Hold `Ctrl` for instant $3\times$ speed across multi-monitor setups, or `Shift` for $0.3\times$ precision crawl.
 - 🪟 **Desktop & CLI Shortcuts**: Supports instant one-shot subcommands (`fckmouse move`, `fckmouse click`, `fckmouse scroll`) bindable to desktop or window manager hotkeys.
 - 🔌 **Dynamic USB Hotplug & Multi-Device**: Automatically detects when keyboards are plugged, unplugged, or re-enumerated when connecting/disconnecting external USB devices without restarting the daemon.
-- 🩺 **Built-in Doctor (`fckmouse doctor`)**: Instant diagnostics of `/dev/uinput`, `/dev/input/event*`, and user group permissions.
+- 🎯 **Grid Snap Navigation**: Press `G` in Mouse Mode to trigger an instant 3×3 screen grid. Jump across monitors or large screens in 1-2 taps using `QWE`/`ASD`/`ZXC` or Numpad `1-9` with recursive subdivision for instant target acquisition.
+- 🩺 **Built-in Doctor (`fckmouse doctor`)**: Instant diagnostics of `/dev/uinput`, `/dev/input/event*`, display resolution auto-detection, and user group permissions.
 
 ---
 
@@ -44,11 +45,14 @@ It works in **all desktop environments** (GNOME, KDE, XFCE, etc.), **all Wayland
 `fckmouse` uses **Modal Mouse Mode** with an exclusive Linux kernel keyboard lock (`EVIOCGRAB`). When active, keystrokes exclusively control the mouse without leaking letters into open documents, triggering browser shortcuts, or holding down sticky modifiers.
 
 1. Press **`Alt + Shift + M`** to toggle **Mouse Mode**.
-2. Control cursor gliding, clicking, and 2D scrolling effortlessly:
+2. Control cursor gliding, clicking, 2D scrolling, and grid snapping effortlessly:
 
 | Key(s) | Action | Hand / Group | Description |
 | :--- | :--- | :--- | :--- |
 | **`WASD`** / `HJKL` | **Move Cursor** | Left Hand | Smooth acceleration (supports diagonal motion) |
+| **`G`** | **Grid Snap** | Left Hand | Activate 3×3 Grid Snap overlay (press zone key to jump) |
+| **`QWE` / `ASD` / `ZXC`** | **Zone Select** | Left Hand | Jump cursor directly to corresponding screen cell (recursive) |
+| **`1`–`9` (Numpad)** | **Numpad Zone** | Right Hand | Alternative 3×3 numpad grid target selection |
 | **`Space`** | **Left Click** | Left Hand | Standard clean left click (no duplicate window!) |
 | **`C`** | **Right Click** | Left Hand | Context menu / right click |
 | **`V`** | **Middle Click** | Left Hand | Open links in new tab / terminal paste |
@@ -162,6 +166,17 @@ acceleration = 35.0         # Rate of acceleration per second
 turbo_multiplier = 3.0      # Multiplier when Turbo key is held
 precision_multiplier = 0.3  # Multiplier when Precision key is held
 tick_rate_ms = 10           # Physics update frequency (10ms = 100 Hz)
+
+
+[grid]
+# Grid Snap navigation (jump across screen in 1-2 keystrokes):
+enabled = true
+activate = "g"              # Key inside Mouse Mode to engage Grid Snap
+screen_width = 0            # 0 = auto-detect via niri / xrandr (set manually if needed)
+screen_height = 0           # 0 = auto-detect via niri / xrandr (set manually if needed)
+rows = 3                    # 3x3 grid
+cols = 3
+recursive = true            # Consecutive key presses subdivide target cell
 ```
 
 
